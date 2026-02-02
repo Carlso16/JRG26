@@ -1,10 +1,12 @@
 #include <Arduino.h>
+#include <Encoder.h>
 
 void setup() {
-  // put your setup code here, to run once:
+    initEncoders();
+    Serial.begin(115200);
+
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+    W vel = readW();
 }
-
