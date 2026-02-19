@@ -74,3 +74,5 @@ int16_t leer_LASER(uint8_t direccion_i2c) {
 
   return -1;
 }
+
+
