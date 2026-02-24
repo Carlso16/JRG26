@@ -10,6 +10,7 @@ struct W {
     float ti;
 };
 
+
 void initEncoders();
 W readW();
 
