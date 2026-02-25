@@ -73,28 +73,10 @@ void loop() {
     }
   }
   digitalWrite(2,perdidaDeLinea);
-  /*Serial.print("Estados: [ ");
-  for (uint8_t i = 0; i < 7; i++) {
-    if (estadoSensores[i]) {
-      Serial.print("ON  ");
-    } else {
-      Serial.print("OFF ");
-    }
-  }
-  Serial.println("]");*/
-  /*Serial.println("position:");
-  Serial.println(position);*/ 
   error = setPoint - position;
-  /*int valor = analogRead(26);
-  Serial.println("valor:");
-  Serial.println(valor);*/
   if(perdidaDeLinea)
     error = errorCong;
   accion = Kp*error + Kd*(error-errorAnt) + Ki*(error+errorAnt); // + Ki*(error + errorAnt) + Kd*(error - errorAnt) creo
-  /*Serial.println("accion:");
-  Serial.println(accion);
-  Serial.print('\n');*/
-
   aplicarAccion(accion);
   //leerValoresK();
   errorAnt = error;
