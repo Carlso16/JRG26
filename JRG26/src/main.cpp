@@ -3,11 +3,13 @@
 
 #define pinModeMux 19
 #define unmbralON 3000
+#define volantazo 350
 
 #include <QTRSensors.h>
 const uint8_t sensorPins[] = {26,25,33,32,35,34,39,36};
 uint16_t  sensorValues[8];
 boolean perdidaDeLinea = false;
+boolean perdidaDeLineaAnt = false;
 boolean estadoSensores[8];
 boolean estadoSensoresAnt[8];
 boolean* ptr = estadoSensores;    
@@ -62,8 +64,15 @@ void loop() {
   for(int i = 0; i < 7; i++){
     perdidaDeLinea = perdidaDeLinea && not(estadoSensores[i]);
   }
-  if(perdidaDeLinea)
-    digitalWrite(2,HIGH);
+  if(perdidaDeLinea && !perdidaDeLineaAnt){
+    if(estadoSensoresAnt[0] || estadoSensoresAnt[1]){
+      errorCong = volantazo;
+    }
+    else{
+      errorCong = -volantazo;
+    }
+  }
+  digitalWrite(2,perdidaDeLinea);
   /*Serial.print("Estados: [ ");
   for (uint8_t i = 0; i < 7; i++) {
     if (estadoSensores[i]) {
@@ -71,14 +80,16 @@ void loop() {
     } else {
       Serial.print("OFF ");
     }
-  }*/
-  Serial.println("]");
+  }
+  Serial.println("]");*/
   /*Serial.println("position:");
   Serial.println(position);*/ 
   error = setPoint - position;
- int valor = analogRead(26);
+  /*int valor = analogRead(26);
   Serial.println("valor:");
-  Serial.println(valor);
+  Serial.println(valor);*/
+  if(perdidaDeLinea)
+    error = errorCong;
   accion = Kp*error + Kd*(error-errorAnt) + Ki*(error+errorAnt); // + Ki*(error + errorAnt) + Kd*(error - errorAnt) creo
   /*Serial.println("accion:");
   Serial.println(accion);
@@ -87,10 +98,11 @@ void loop() {
   aplicarAccion(accion);
   //leerValoresK();
   errorAnt = error;
+  perdidaDeLineaAnt = perdidaDeLinea;
   for(int i = 0; i < 7; i++){
     estadoSensoresAnt[i] = estadoSensores[i];
   }
-  delay(50);
+  delay(10);
 }
 void aplicarAccion(int accion){
   int velIzda = constrain(vBase + accion, -100, 100);
