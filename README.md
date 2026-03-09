@@ -93,6 +93,7 @@ This project involved the complete development of a robotics system, including:
 * Project presentation and poster design
 
 ---
+
 ## Image and Project Identity
 
 JGR26 was not only developed as a technical robotics platform, but also presented as a complete project with its own visual identity and communication approach.
@@ -105,6 +106,7 @@ This branding and outreach work helped reinforce JGR26 as a complete engineering
 
 
 ![Poster Design](images/CARTEL_ROBOT.jpeg)
+
 ---
 
 ## Team
