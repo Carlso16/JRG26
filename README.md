@@ -56,7 +56,7 @@ The motion system is driven using **L298N H-bridge motor drivers**, while the se
 
 ![PCB Layout](images/PCB_LAYOUT.jpeg)
 
-![Schematic](images/SCHEMATIC.jpeg)
+![Schematic](images/PCB_SCH.jpeg)
 
 ---
 
