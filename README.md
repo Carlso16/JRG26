@@ -52,10 +52,13 @@ JGR26 includes a **custom PCB** developed for the robot’s electronics integrat
 
 The motion system is driven using **L298N H-bridge motor drivers**, while the sensing system includes **TOF400C laser sensors via I²C** and an **ESP32-CAM** module for additional vision-related functionality.
 
+## PCB 3D
 ![PCB 3D](images/PCB_3D.jpeg)
 
+## PCB LAYOUT
 ![PCB Layout](images/PCB_LAYOUT.jpeg)
 
+## PCB SCH
 ![Schematic](images/PCB_SCH.jpeg)
 
 ---
