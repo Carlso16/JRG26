@@ -8,7 +8,7 @@ The robot was completely modeled in **3D**, equipped with a **custom-designed PC
 
 JGR26 can be programmed to work in either **line-following mode** or **sumo mode**, while its mechanical chassis can also be configured in **high mode** (all-terrain configuration) or **low mode**, giving the platform both functional and structural versatility.
 
-![3D View](images/3D_VIEW.png)
+![Robot de frente](images/frontal.jpg)
 
 ---
 
@@ -41,7 +41,8 @@ JGR26 can be programmed to work in either **line-following mode** or **sumo mode
 The robot was fully designed in 3D, including the complete chassis and structural components.  
 A key part of the design is its **adjustable configuration**, allowing the robot to operate with a **high chassis setup** for more all-terrain capability or a **low chassis setup** depending on the application.
 
-![Mechanical Design](images/MECHANICAL_DESIGN.png)
+![Mood bajo](images/ROBOT_MODO_BAJO.png)
+![Mood alto](images/ROBOT_MODO_ALTO.png)
 
 ---
 
@@ -50,6 +51,8 @@ A key part of the design is its **adjustable configuration**, allowing the robot
 JGR26 includes a **custom PCB** developed for the robot’s electronics integration and is based on an **ESP32** as the main controller.
 
 The motion system is driven using **L298N H-bridge motor drivers**, while the sensing system includes **TOF400C laser sensors via I²C** and an **ESP32-CAM** module for additional vision-related functionality.
+
+![PCB 3D](images/PCB_3D.png)
 
 ![PCB Layout](images/PCB_LAYOUT.png)
 
