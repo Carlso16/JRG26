@@ -2,7 +2,7 @@
 #include <Servos.h>
 
 #define pinModeMux 19
-#define unmbralON 2400
+#define unmbralON 1900
 
 #include <QTRSensors.h>
 const uint8_t sensorPins[] = {26,25,33,32,35,34,39,36};
@@ -21,8 +21,8 @@ int accion = 0;
 int error = 0;
 int errorAnt = 0;
 int errorCong = 0;
-float Kp = 0.05; //orden 0.05
-float volantazo = 75/Kp;
+float Kp = 0.075; //orden 0.05
+float volantazo = 85/Kp;
 float Kd = 0;
 float Ki = 0;
 int sentidoi = 0;
