@@ -26,14 +26,14 @@ void loop() {
   int rawD8 = analogRead(26);   // D8: pin 36
   
   // Convierte el valor bruto a voltaje (0 a 3.3V) usando la resolución de 12 bits (4095)
-  float voltageD1 = rawD1 * (3.3 / 4095.0);
-  float voltageD2 = rawD2 * (3.3 / 4095.0);
-  float voltageD3 = rawD3 * (3.3 / 4095.0);
-  float voltageD4 = rawD4 * (3.3 / 4095.0);
-  float voltageD5 = rawD5 * (3.3 / 4095.0);
-  float voltageD6 = rawD6 * (3.3 / 4095.0);
-  float voltageD7 = rawD7 * (3.3 / 4095.0);
-  float voltageD8 = rawD8 * (3.3 / 4095.0);
+  float voltageD1 = rawD1;
+  float voltageD2 = rawD2; 
+  float voltageD3 = rawD3; 
+  float voltageD4 = rawD4;
+  float voltageD5 = rawD5;
+  float voltageD6 = rawD6;
+  float voltageD7 = rawD7;
+  float voltageD8 = rawD8;
   
   // Imprime los valores de tensión en una sola línea
   Serial.print("D1: ");
