@@ -2,7 +2,7 @@
 #include <Servos.h>
 
 #define pinModeMux 19
-#define unmbralON 1900
+#define unmbralON 2800
 
 #include <QTRSensors.h>
 const uint8_t sensorPins[] = {26,25,33,32,35,34,39,36};
@@ -16,14 +16,14 @@ boolean* ptrAnt = estadoSensoresAnt;
 QTRSensors qtr;
 
 int setPoint = 3500;
-int vBase = 20; //orden 20
+int vBase = 65; //orden 20
 int accion = 0;
 int error = 0;
 int errorAnt = 0;
 int errorCong = 0;
-float Kp = 0.075; //orden 0.05
-float volantazo = 85/Kp;
-float Kd = 0;
+float Kp = 0.05; //orden 0.05
+float volantazo = 110/Kp;
+float Kd = 0.2;
 float Ki = 0;
 int sentidoi = 0;
 int sentidod = 0;
@@ -84,7 +84,7 @@ void loop() {
   for(int i = 0; i < 7; i++){
     estadoSensoresAnt[i] = estadoSensores[i];
   }
-  delay(10);
+  
 }
 void aplicarAccion(int accion){
   int velIzda = constrain(vBase + accion, -100, 100);
