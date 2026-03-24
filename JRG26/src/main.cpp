@@ -2,7 +2,7 @@
 #include <Servos.h>
 
 #define pinModeMux 19
-#define unmbralON 2800
+#define unmbralON 2600
 
 #include <QTRSensors.h>
 const uint8_t sensorPins[] = {26,25,33,32,35,34,39,36};
@@ -16,7 +16,7 @@ boolean* ptrAnt = estadoSensoresAnt;
 QTRSensors qtr;
 
 int setPoint = 3500;
-int vBase = 65; //orden 20
+int vBase = 40; //orden 20
 int accion = 0;
 int error = 0;
 int errorAnt = 0;
@@ -76,7 +76,7 @@ void loop() {
   error = setPoint - position;
   if(perdidaDeLinea)
     error = errorCong;
-  accion = Kp*error + Kd*(error-errorAnt) + Ki*(error+errorAnt); // + Ki*(error + errorAnt) + Kd*(error - errorAnt) creo
+  accion = Kp*error + Kd*(error-errorAnt) + Ki*(error+errorAnt); // 
   aplicarAccion(accion);
   //leerValoresK();
   errorAnt = error;
