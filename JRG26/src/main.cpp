@@ -3,6 +3,10 @@
 
 #define pinModeMux 19
 #define unmbralON 2600
+#define vBase0 70
+#define Kv 0.05
+#define vBaseSat 40
+#define kvi 1
 
 #include <QTRSensors.h>
 const uint8_t sensorPins[] = {26,25,33,32,35,34,39,36};
@@ -22,11 +26,12 @@ int error = 0;
 int errorAnt = 0;
 int errorCong = 0;
 float Kp = 0.05; //orden 0.05
-float volantazo = 110/Kp;
+float volantazo = 250/Kp;
 float Kd = 0.35;
 float Ki = 0;
 int sentidoi = 0;
 int sentidod = 0;
+int Iv = 0;
 
 void aplicarAccion(int accion);
 void leerSensores();
@@ -74,9 +79,17 @@ void loop() {
   }
   digitalWrite(2,perdidaDeLinea);
   error = setPoint - position;
+  vBase = vBase0 - Kv*abs(error);
+  if(vBase < vBaseSat) vBase = vBaseSat;
   if(perdidaDeLinea)
     error = errorCong;
-  accion = Kp*error + Kd*(error-errorAnt) + Ki*(error+errorAnt); // 
+  accion = Kp*error + Kd*(error-errorAnt) + Ki*(error+errorAnt); 
+  if(perdidaDeLinea){
+    Iv += error*kvi;
+    //accion += Iv;
+  } 
+  else
+    Iv = 0;
   aplicarAccion(accion);
   //leerValoresK();
   errorAnt = error;
