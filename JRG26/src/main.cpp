@@ -1,16 +1,15 @@
 #include <Arduino.h>
 #include <Servos.h>
 #include <BluetoothSerial.h>
-
+#include <ArduinoJson.h>
+#include <QTRSensors.h>
 
 #define pinModeMux 19
-#define unmbralON 2600
-#define vBase0 70
-#define Kv 0.05
 #define vBaseSat 40
-#define kvi 1
+#define setPoint 3500
 
-#include <QTRSensors.h>
+
+
 const uint8_t sensorPins[] = {26,25,33,32,35,34,39,36};
 uint16_t  sensorValues[8];
 boolean perdidaDeLinea = false;
@@ -21,7 +20,6 @@ boolean* ptr = estadoSensores;
 boolean* ptrAnt = estadoSensoresAnt;
 QTRSensors qtr;
 
-int setPoint = 3500;
 int vBase = 40; //orden 20
 int accion = 0;
 int error = 0;
@@ -31,8 +29,10 @@ float Kp = 0.05; //orden 0.05
 float volantazo = 250/Kp;
 float Kd = 0.35;
 float Ki = 0;
-int sentidoi = 0;
-int sentidod = 0;
+float Kv = 0.05;
+float kvi = 1;
+int unmbralON = 2600;
+int vBase0 = 70;
 int Iv = 0;
 
 void aplicarAccion(int accion);
@@ -88,7 +88,7 @@ void loop() {
   accion = Kp*error + Kd*(error-errorAnt) + Ki*(error+errorAnt); 
   if(perdidaDeLinea){
     Iv += error*kvi;
-    //accion += Iv;
+    accion += Iv;
   } 
   else
     Iv = 0;
@@ -108,5 +108,3 @@ void aplicarAccion(int accion){
   ruedaTrasDcha(velDcha); 
   ruedaDelDcha(velDcha);
 }
-
-
