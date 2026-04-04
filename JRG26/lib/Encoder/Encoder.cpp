@@ -69,3 +69,19 @@ W readW(){
     return velAng;
 }
 
+PulseCount readCount(){
+    PulseCount pulsos;
+    
+    pulsos.ddAnt = pulsos.dd;
+    pulsos.diAnt = pulsos.di;
+    pulsos.tdAnt = pulsos.td;
+    pulsos.tiAnt = pulsos.ti;
+
+    pulsos.dd = encoders[1]->getCount();
+    pulsos.di = encoders[2]->getCount();
+    pulsos.td = encoders[3]->getCount();
+    pulsos.ti = encoders[4]->getCount();
+
+    return pulsos;
+}
+
