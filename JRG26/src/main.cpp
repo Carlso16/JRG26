@@ -26,7 +26,7 @@ int accion = 0;
 int error = 0;
 int errorAnt = 0;
 int errorCong = 0;
-float Kp = 0.05; //orden 0.05
+float Kp = 0.03; //orden 0.05
 float volantazo = 250/Kp;
 float Kd = 0.35;
 float Ki = 0;
@@ -104,7 +104,6 @@ void loop() {
     estadoSensoresAnt[i] = estadoSensores[i];
   }
   recibirDatosBluetooth();
-  delay(100);
 }
 void aplicarAccion(int accion){
   int velIzda = constrain((int)vBase + accion, -100, 100);
@@ -135,10 +134,12 @@ void recibirDatosBluetooth() {
   Ki = doc["KI"] | 0.0;
   Kv = doc["Kv"] | 0.0;
   kvi = doc["Kvi"] | 0.0;
-  vBase = doc["Vbase"] | 0.0;
+  vBase0 = doc["Vbase"] | 0.0;
   volantazo = doc["Volantazo"] | 0.0;
+  volantazo /= Kp;
   umbralON = doc["Umbral"] | 0.0;
 
+  /*
   Serial.print("DATOS RECIBIDOS OK");
   Serial.print(" | KP="); Serial.print(Kp);
   Serial.print(" | KI="); Serial.print(Ki);
@@ -148,7 +149,7 @@ void recibirDatosBluetooth() {
   Serial.print(" | Vbase="); Serial.print(vBase);
   Serial.print(" | Volantazo="); Serial.print(volantazo);
   Serial.print(" | Umbral="); Serial.println(umbralON);
-
+  */
   
   SerialBT.print("DATOS RECIBIDOS OK");
   SerialBT.print(" | KP="); SerialBT.print(Kp);
