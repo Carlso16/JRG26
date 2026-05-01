@@ -38,7 +38,7 @@ JGR26 can be programmed to work in either **line-following mode** or **sumo mode
 
 ## Mechanical Design
 
-The robot was fully designed in 3D, including the chassis, structural components, and internal mounting system.  
+The robot was fully designed in 3D with SolidWorks, including the chassis, structural components, and internal mounting system.  
 The design focuses on a **highly modular architecture**, allowing the robot to be adapted for different challenges and configurations.
 
 It includes the possibility of mounting a **pencil module** to draw figures, as well as dedicated modules for **sumo**, **line-following**, and **golf** tests.  
