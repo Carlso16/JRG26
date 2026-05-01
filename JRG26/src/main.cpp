@@ -1,37 +1,36 @@
-//MAC Emisor B0:CB:D8:D7:2F:28
-//MAC Receptor F4:65:0B:E7:EB:D0 
-
 #include <Arduino.h>
 #include <esp_now.h>
 #include <WiFi.h>
 
-// El LED está en el pin 13
-const int LED_PIN = 13;
+// MAC del Receptor
+uint8_t broadcastAddress[] = {0xF4, 0x65, 0x0B, 0xE7, 0xEB, 0xD0};
 
 typedef struct struct_message {
-    bool encender;
+    bool encender; 
 } struct_message;
 
-struct_message incomingData;
+struct_message myData;
+esp_now_peer_info_t peerInfo;
 
-// Función que se ejecuta al recibir datos
-void OnDataRecv(const uint8_t * mac, const uint8_t *data, int len) {
-    memcpy(&incomingData, data, sizeof(incomingData));
-    
-    if (incomingData.encender) {
-        digitalWrite(LED_PIN, HIGH);
-        Serial.println("LED ENCENDIDO");
-    } else {
-        digitalWrite(LED_PIN, LOW);
-        Serial.println("LED APAGADO");
-    }
-}
+// Configuración de Pines
+const int PIN_ON = 32;
+const int PIN_OFF = 26;
+
+// Variables para el filtro antirebote
+unsigned long lastDebounceTimeON = 0;  
+unsigned long lastDebounceTimeOFF = 0;  
+const unsigned long debounceDelay = 50; // Tiempo de estabilidad (ms)
+
+int lastButtonStateON = HIGH;
+int lastButtonStateOFF = HIGH;
+int stableButtonStateON = HIGH;
+int stableButtonStateOFF = HIGH;
 
 void setup() {
     Serial.begin(115200);
     
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW); // Empezar apagado
+    pinMode(PIN_ON, INPUT_PULLUP);
+    pinMode(PIN_OFF, INPUT_PULLUP);
 
     WiFi.mode(WIFI_STA);
 
@@ -40,10 +39,54 @@ void setup() {
         return;
     }
 
-    esp_now_register_recv_cb(OnDataRecv);
-    Serial.println("Receptor listo. Esperando comandos...");
+    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+    peerInfo.channel = 0;  
+    peerInfo.encrypt = false;
+    
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        Serial.println("Error al añadir receptor");
+        return;
+    }
 }
 
 void loop() {
-    // Nada aquí, todo ocurre en el callback
+    // --- LÓGICA FILTRO PARA PIN_ON (32) ---
+    int readingON = digitalRead(PIN_ON);
+
+    if (readingON != lastButtonStateON) {
+        lastDebounceTimeON = millis();
+    }
+
+    if ((millis() - lastDebounceTimeON) > debounceDelay) {
+        if (readingON != stableButtonStateON) {
+            stableButtonStateON = readingON;
+            // Solo enviamos cuando el estado estable pasa a LOW (pulsado)
+            if (stableButtonStateON == LOW) {
+                myData.encender = true;
+                esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+                Serial.println(">> Comando: ENCENDER");
+            }
+        }
+    }
+    lastButtonStateON = readingON;
+
+    // --- LÓGICA FILTRO PARA PIN_OFF (26) ---
+    int readingOFF = digitalRead(PIN_OFF);
+
+    if (readingOFF != lastButtonStateOFF) {
+        lastDebounceTimeOFF = millis();
+    }
+
+    if ((millis() - lastDebounceTimeOFF) > debounceDelay) {
+        if (readingOFF != stableButtonStateOFF) {
+            stableButtonStateOFF = readingOFF;
+            // Solo enviamos cuando el estado estable pasa a LOW (pulsado)
+            if (stableButtonStateOFF == LOW) {
+                myData.encender = false;
+                esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+                Serial.println(">> Comando: APAGAR");
+            }
+        }
+    }
+    lastButtonStateOFF = readingOFF;
 }
