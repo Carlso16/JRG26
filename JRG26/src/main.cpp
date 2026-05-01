@@ -6,7 +6,7 @@
 const int GRUPO_A_PIN1 = 25;
 const int GRUPO_A_PIN2 = 16;
 const int GRUPO_B_PIN1 = 4;
-const int GRUPO_B_PIN2 = 10;
+const int GRUPO_B_PIN2 = 26;
 
 typedef struct struct_message {
     bool boton1;
@@ -19,10 +19,16 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *data, int len) {
     memcpy(&incomingData, data, sizeof(incomingData));
 
     // Control Grupo A (Mientras pin 23 esté pulsado)
+    Serial.println("");
+    Serial.print("Boton1 : ");
+    Serial.println(incomingData.boton1);
     digitalWrite(GRUPO_A_PIN1, incomingData.boton1 ? HIGH : LOW);
     digitalWrite(GRUPO_A_PIN2, incomingData.boton1 ? HIGH : LOW);
 
     // Control Grupo B (Mientras pin 26 esté pulsado)
+    
+    Serial.print("Boton2 : ");
+    Serial.println(incomingData.boton2);
     digitalWrite(GRUPO_B_PIN1, incomingData.boton2 ? HIGH : LOW);
     digitalWrite(GRUPO_B_PIN2, incomingData.boton2 ? HIGH : LOW);
 }
