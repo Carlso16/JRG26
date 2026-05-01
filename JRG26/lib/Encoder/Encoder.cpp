@@ -21,6 +21,7 @@ float deltaT = 0;
 
 unsigned long Tant = 0;
 unsigned long T = 0;
+static uint32_t lastUs = 0;
 
 
 ESP32Encoder encoder1;
@@ -70,18 +71,18 @@ W readW(){
 }
 
 PulseCount readCount(){
-    PulseCount pulsos;
-    
+    static PulseCount pulsos = {0,0,0,0,0,0,0,0}; 
+
+    // Guardar anterior ANTES de leer nuevo
     pulsos.ddAnt = pulsos.dd;
     pulsos.diAnt = pulsos.di;
     pulsos.tdAnt = pulsos.td;
     pulsos.tiAnt = pulsos.ti;
-
-    pulsos.dd = encoders[1]->getCount();
-    pulsos.di = encoders[2]->getCount();
-    pulsos.td = encoders[3]->getCount();
-    pulsos.ti = encoders[4]->getCount();
+    // micros() - lastUs >= 1000; lastUs += 1000;  //1 ms
+    pulsos.di = encoders[1]->getCount();  // era dd → real: di
+    pulsos.td = -encoders[2]->getCount(); // era di → real: td (invertido)
+    pulsos.ti = -encoders[3]->getCount();  // era td → real: ti
+    pulsos.dd = encoders[0]->getCount();  // era ti → real: dd
 
     return pulsos;
 }
-
