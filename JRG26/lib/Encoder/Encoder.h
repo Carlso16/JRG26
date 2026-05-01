@@ -10,6 +10,18 @@ struct W {
     float ti;
 };
 
+struct PulseCount {
+    float dd;
+    float di;
+    float td;
+    float ti;
+    float ddAnt;
+    float diAnt;
+    float tdAnt;
+    float tiAnt;
+};
+
+
 void initEncoders();
 W readW();
 
