@@ -38,11 +38,15 @@ JGR26 can be programmed to work in either **line-following mode** or **sumo mode
 
 ## Mechanical Design
 
-The robot was fully designed in 3D, including the complete chassis and structural components.  
-A key part of the design is its **adjustable configuration**, allowing the robot to operate with a **high chassis setup** for more all-terrain capability or a **low chassis setup** depending on the application.
+The robot was fully designed in 3D, including the chassis, structural components, and internal mounting system.  
+The design focuses on a **highly modular architecture**, allowing the robot to be adapted for different challenges and configurations.
 
-![Mood bajo](images/ROBOT_MODO_BAJO.png)
-![Mood alto](images/ROBOT_MODO_ALTO.png)
+It includes the possibility of mounting a **pencil module** to draw figures, as well as dedicated modules for **sumo**, **line-following**, and **golf** tests.  
+The robot also features a **low center of mass** to improve stability, while keeping all the electronics fully integrated inside the chassis for a cleaner and more protected design.
+
+![INTERIOR JRG](images/INTERIOR_JGR.jpeg)
+![JGR 3D](images/JGR_3D.jpeg)
+![MODULOS JGR](images/MODULOS_JGR.jpeg)
 
 ---
 
