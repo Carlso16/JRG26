@@ -2,91 +2,62 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-// MAC del Receptor
 uint8_t broadcastAddress[] = {0xF4, 0x65, 0x0B, 0xE7, 0xEB, 0xD0};
 
+// Estructura para enviar el estado de ambos botones
 typedef struct struct_message {
-    bool encender; 
+    bool boton1; // Pin 23
+    bool boton2; // Pin 26
 } struct_message;
 
 struct_message myData;
 esp_now_peer_info_t peerInfo;
 
-// Configuración de Pines
-const int PIN_ON = 32;
-const int PIN_OFF = 26;
+const int PIN_1 = 23;
+const int PIN_2 = 26;
 
-// Variables para el filtro antirebote
-unsigned long lastDebounceTimeON = 0;  
-unsigned long lastDebounceTimeOFF = 0;  
-const unsigned long debounceDelay = 50; // Tiempo de estabilidad (ms)
-
-int lastButtonStateON = HIGH;
-int lastButtonStateOFF = HIGH;
-int stableButtonStateON = HIGH;
-int stableButtonStateOFF = HIGH;
+// Variables para antirebote
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 30;
+bool lastState1 = HIGH;
+bool lastState2 = HIGH;
 
 void setup() {
     Serial.begin(115200);
-    
-    pinMode(PIN_ON, INPUT_PULLUP);
-    pinMode(PIN_OFF, INPUT_PULLUP);
+    pinMode(PIN_1, INPUT_PULLUP);
+    pinMode(PIN_2, INPUT_PULLUP);
 
     WiFi.mode(WIFI_STA);
 
-    if (esp_now_init() != ESP_OK) {
-        Serial.println("Error inicializando ESP-NOW");
-        return;
-    }
+    if (esp_now_init() != ESP_OK) return;
 
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
     peerInfo.channel = 0;  
     peerInfo.encrypt = false;
-    
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("Error al añadir receptor");
-        return;
-    }
+    esp_now_add_peer(&peerInfo);
 }
 
 void loop() {
-    // --- LÓGICA FILTRO PARA PIN_ON (32) ---
-    int readingON = digitalRead(PIN_ON);
+    bool currentState1 = digitalRead(PIN_1);
+    bool currentState2 = digitalRead(PIN_2);
 
-    if (readingON != lastButtonStateON) {
-        lastDebounceTimeON = millis();
-    }
+    // Si algún botón cambia de estado
+    if (currentState1 != lastState1 || currentState2 != lastState2) {
+        
+        // Filtro antirebote simple
+        if ((millis() - lastDebounceTime) > debounceDelay) {
+            
+            // Lógica inversa por INPUT_PULLUP: LOW = Pulsado (true)
+            myData.boton1 = (currentState1 == LOW);
+            myData.boton2 = (currentState2 == LOW);
 
-    if ((millis() - lastDebounceTimeON) > debounceDelay) {
-        if (readingON != stableButtonStateON) {
-            stableButtonStateON = readingON;
-            // Solo enviamos cuando el estado estable pasa a LOW (pulsado)
-            if (stableButtonStateON == LOW) {
-                myData.encender = true;
-                esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-                Serial.println(">> Comando: ENCENDER");
-            }
+            esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+            
+            lastState1 = currentState1;
+            lastState2 = currentState2;
+            lastDebounceTime = millis();
+
+            Serial.printf("Boton 23: %d | Boton 26: %d\n", myData.boton1, myData.boton2);
         }
     }
-    lastButtonStateON = readingON;
-
-    // --- LÓGICA FILTRO PARA PIN_OFF (26) ---
-    int readingOFF = digitalRead(PIN_OFF);
-
-    if (readingOFF != lastButtonStateOFF) {
-        lastDebounceTimeOFF = millis();
-    }
-
-    if ((millis() - lastDebounceTimeOFF) > debounceDelay) {
-        if (readingOFF != stableButtonStateOFF) {
-            stableButtonStateOFF = readingOFF;
-            // Solo enviamos cuando el estado estable pasa a LOW (pulsado)
-            if (stableButtonStateOFF == LOW) {
-                myData.encender = false;
-                esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-                Serial.println(">> Comando: APAGAR");
-            }
-        }
-    }
-    lastButtonStateOFF = readingOFF;
 }
