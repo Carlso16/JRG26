@@ -13,7 +13,7 @@ typedef struct struct_message {
 struct_message myData;
 esp_now_peer_info_t peerInfo;
 
-const int PIN_1 = 23;
+const int PIN_1 = 32;
 const int PIN_2 = 26;
 
 // Variables para antirebote
