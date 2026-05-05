@@ -1,4 +1,17 @@
 #include "Servos.h"
+#include "Encoder.h"
+
+#define Kp 0.4
+#define Ki 0.01
+
+void accDD(int V);
+void accTD(int V);
+void accI (int V);
+
+float i = 0;
+float IDD = 0;
+float ITD = 0;
+float II = 0;
 
 void initPWM() {
   ledcSetup(CANAL_1, FRECUENCIA, RESOLUCION);
@@ -21,8 +34,103 @@ void initPWM() {
   ledcWrite(CANAL_4, 0);
   ledcWrite(CANAL_7, 0);
   ledcWrite(CANAL_8, 0);
+
+  initEncoders();
 }
 
+void wRuedas(int wDD,int wTD,int wI){
+  W wRuedas = readW();
+  wRuedas.dd *= 2.083; 
+  wRuedas.td *= -2.083;
+  wRuedas.di *= 2.083;
+  float eDD = wDD - wRuedas.dd;
+  float eTD = wTD - wRuedas.td;
+  float eDI = wI - wRuedas.di;
+  IDD += Ki * eDD;
+  ITD += Ki * eTD;
+  II += Ki * eDI;
+  float VDD = Kp*eDD + IDD;
+  float VTD = Kp*eTD + ITD;
+  float VI = Kp*eDI + II;
+
+  i++;
+  if(i > 50){
+  i = 0;
+  // --- IMPRESIÓN SIMPLE ---
+  Serial.print("DD -> SP:"); Serial.print(wDD); 
+  Serial.print(" w:"); Serial.print(wRuedas.dd); 
+  Serial.print(" Err:"); Serial.print(eDD); 
+  Serial.print(" V:"); Serial.println(VDD);
+
+  Serial.print("TD -> SP:"); Serial.print(wTD); 
+  Serial.print(" w:"); Serial.print(wRuedas.td); 
+  Serial.print(" Err:"); Serial.print(eTD); 
+  Serial.print(" V:"); Serial.println(VTD);
+
+  Serial.print("IZ -> SP:"); Serial.print(wI); 
+  Serial.print(" w:"); Serial.print(wRuedas.di); 
+  Serial.print(" Err:"); Serial.print(eDI); 
+  Serial.print(" V:"); Serial.println(VI);
+  
+  Serial.println("---"); // Separador para cada ciclo
+  }
+  accDD(VDD);
+  accTD(VTD);
+  accI(VI);
+}
+
+void accDD(int V) {
+    int duty = 255 * abs(V) / 11;
+    duty = constrain(duty, 0, 255);
+    if (V > 0) {
+      ledcWrite(CANAL_8, duty);
+      ledcWrite(CANAL_7, 0);
+    } else {
+      ledcWrite(CANAL_8, 0);
+      ledcWrite(CANAL_7, duty);
+    }  
+}
+
+void accI(int V) {
+    int duty = 255 * abs(V) / 11;
+    duty = constrain(duty, 0, 255);
+    if (V > 0) {
+      ledcWrite(CANAL_2, duty);
+      ledcWrite(CANAL_1, 0);
+    } else {
+      ledcWrite(CANAL_2, 0);
+      ledcWrite(CANAL_1, duty);
+    }  
+}
+    
+
+
+void accTD(int V) {
+    int duty = 255 * abs(V) / 11;
+    duty = constrain(duty, 0, 255);
+    if (V > 0) {
+      ledcWrite(CANAL_3, duty);
+      ledcWrite(CANAL_4, 0);
+    } else {
+      ledcWrite(CANAL_3, 0);
+      ledcWrite(CANAL_4, duty);
+    }  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
 void ruedaDelDcha(int velocidad) {
     int duty = 255 * abs(velocidad) / 100;
     duty = constrain(duty, 0, 255);
@@ -46,6 +154,8 @@ void ruedasIzda(int velocidad) {
       ledcWrite(CANAL_1, duty);
     }  
 }
+    
+
 
 void ruedaTrasDcha(int velocidad) {
     int duty = 255 * abs(velocidad) / 100;
@@ -58,3 +168,4 @@ void ruedaTrasDcha(int velocidad) {
       ledcWrite(CANAL_4, duty);
     }  
 }
+    */

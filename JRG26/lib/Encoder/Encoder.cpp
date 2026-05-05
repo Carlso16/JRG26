@@ -47,6 +47,7 @@ void initEncoders() {
     encoder4.setCount(0);
 
     Serial.println("Encoders inicializados");
+    
 }
 
 W readW(){
@@ -59,10 +60,10 @@ W readW(){
     for(int i=0;i<4;i++){
         deltaTita[i] = (2*3.1415f*(nuevaPosicion[i] - ultimaPosicion[i]))/680;
     }
-    velAng.dd = 1000*deltaTita[1]/deltaT;
-    velAng.ti = 1000*deltaTita[2]/deltaT;
-    velAng.di = 1000*deltaTita[0]/deltaT;
-    velAng.td = 1000*deltaTita[3]/deltaT;
+    velAng.di = 1000*deltaTita[1]/deltaT;
+    velAng.td = 1000*deltaTita[2]/deltaT;
+    velAng.dd = 1000*deltaTita[0]/deltaT;
+    velAng.ti = 1000*deltaTita[3]/deltaT;
     Tant = T;
     for(int i=0;i<4;i++){
         ultimaPosicion[i] = nuevaPosicion[i];

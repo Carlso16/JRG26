@@ -25,8 +25,8 @@
 
 // --- Prototipos de Funciones ---
 void initPWM();
-void ruedaDelDcha(int velocidad);
-void ruedasIzda(int velocidad);
-void ruedaTrasDcha(int velocidad);
-
+void wRuedas(int wDD,int wTD,int wI);
+void accI(int V);
+void accDD(int V);
+void accTD(int V);
 #endif
