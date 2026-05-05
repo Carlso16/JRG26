@@ -3,6 +3,7 @@
 
 #define Kp 0.4
 #define Ki 0.01
+#define Vmax 11
 
 void accDD(int V);
 void accTD(int V);
@@ -12,6 +13,9 @@ float i = 0;
 float IDD = 0;
 float ITD = 0;
 float II = 0;
+bool satDD = false;
+bool satTD = false;
+bool satI = false;
 
 void initPWM() {
   ledcSetup(CANAL_1, FRECUENCIA, RESOLUCION);
@@ -46,12 +50,32 @@ void wRuedas(int wDD,int wTD,int wI){
   float eDD = wDD - wRuedas.dd;
   float eTD = wTD - wRuedas.td;
   float eDI = wI - wRuedas.di;
-  IDD += Ki * eDD;
-  ITD += Ki * eTD;
-  II += Ki * eDI;
+
+  if(!satDD)
+    IDD += Ki * eDD;
+  if(!satTD)
+    ITD += Ki * eTD;
+  if(!satI)
+    II += Ki * eDI;
+
   float VDD = Kp*eDD + IDD;
   float VTD = Kp*eTD + ITD;
   float VI = Kp*eDI + II;
+  
+  if(VDD > Vmax) 
+    satDD = true;
+  else 
+    satDD = false;
+
+  if(VTD > Vmax) 
+    satTD = true;
+  else 
+    satTD = false;
+
+  if(VI > Vmax) 
+    satI = true;
+  else 
+    satI = false;
 
   i++;
   if(i > 50){
@@ -80,7 +104,7 @@ void wRuedas(int wDD,int wTD,int wI){
 }
 
 void accDD(int V) {
-    int duty = 255 * abs(V) / 11;
+    int duty = 255 * abs(V) / Vmax;
     duty = constrain(duty, 0, 255);
     if (V > 0) {
       ledcWrite(CANAL_8, duty);
@@ -92,7 +116,7 @@ void accDD(int V) {
 }
 
 void accI(int V) {
-    int duty = 255 * abs(V) / 11;
+    int duty = 255 * abs(V) / Vmax;
     duty = constrain(duty, 0, 255);
     if (V > 0) {
       ledcWrite(CANAL_2, duty);
@@ -106,7 +130,7 @@ void accI(int V) {
 
 
 void accTD(int V) {
-    int duty = 255 * abs(V) / 11;
+    int duty = 255 * abs(V) / Vmax;
     duty = constrain(duty, 0, 255);
     if (V > 0) {
       ledcWrite(CANAL_3, duty);
