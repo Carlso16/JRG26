@@ -2,7 +2,7 @@
 #include "Encoder.h"
 
 #define Kp 0.4
-#define Ki 0.01
+#define Ki 0.2
 #define Vmax 11
 
 void accDD(int V);

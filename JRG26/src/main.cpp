@@ -8,6 +8,6 @@ void setup() {
 }
 
 void loop() {
-    wRuedas(50,50,50);
+    wRuedas(20,20,20);
     delay(10); // Pequeña pausa para no saturar la CPU
 }
