@@ -49,18 +49,18 @@ void wRuedas(int wDD,int wTD,int wI){
   wRuedas.di *= 2.083;
   float eDD = wDD - wRuedas.dd;
   float eTD = wTD - wRuedas.td;
-  float eDI = wI - wRuedas.di;
+  float eTI = wI - wRuedas.ti;
 
   if(!satDD)
     IDD += Ki * eDD;
   if(!satTD)
     ITD += Ki * eTD;
   if(!satI)
-    II += Ki * eDI;
+    II += Ki * eTI;
 
   float VDD = Kp*eDD + IDD;
   float VTD = Kp*eTD + ITD;
-  float VI = Kp*eDI + II;
+  float VI = Kp*eTI + II;
   
   if(VDD > Vmax) 
     satDD = true;
@@ -93,7 +93,7 @@ void wRuedas(int wDD,int wTD,int wI){
 
   Serial.print("IZ -> SP:"); Serial.print(wI); 
   Serial.print(" w:"); Serial.print(wRuedas.di); 
-  Serial.print(" Err:"); Serial.print(eDI); 
+  Serial.print(" Err:"); Serial.print(eTI); 
   Serial.print(" V:"); Serial.println(VI);
   
   Serial.println("---"); // Separador para cada ciclo
