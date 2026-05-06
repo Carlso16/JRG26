@@ -44,9 +44,11 @@ void initPWM() {
 
 void wRuedas(int wDD,int wTD,int wI){
   W wRuedas = readW();
+
   wRuedas.dd *= 2.083; 
   wRuedas.td *= -2.083;
-  wRuedas.di *= 2.083;
+  wRuedas.ti *= 2.083;
+
   float eDD = wDD - wRuedas.dd;
   float eTD = wTD - wRuedas.td;
   float eTI = wI - wRuedas.ti;
