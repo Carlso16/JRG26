@@ -1,29 +1,56 @@
 #include <Arduino.h>
-#include "Servos.h" // Asegúrate de que este es el nombre correcto de tu header[cite: 1, 2]
+#include "Servos.h" 
+#include <Ticker.h>
 
+Ticker tickerControl;
+
+int spTD = 0;
+int spI  = 0;
+
+void IRAM_ATTR controlLoop() { wRuedas(0, spTD, spI); }
 void setup() {
   Serial.begin(115200);
   initPWM(); 
-  analogReadResolution(12);
   
+  tickerControl.attach_ms(10, controlLoop);
 }
 
 void loop() {
-  int lectura32 = analogRead(32);
-  int lectura33 = analogRead(33);
-  // Conversión a voltaje (asumiendo 3.3V de referencia)
-  float v32 = (lectura32 * 3.3) / 4095.0;
-  float v33 = (lectura33 * 3.3) / 4095.0;
+spTD = 0;
+spI = 0;
+delay(2000);
 
-  // Salida por terminal
-  Serial.print("GPIO 32: "); Serial.print(lectura32);
-  Serial.print(" ("); Serial.print(v32); Serial.print("V)");
-  
-  Serial.print(" | ");
-  
-  Serial.print("GPIO 33: "); Serial.print(lectura33);
-  Serial.print(" ("); Serial.print(v33); Serial.println("V)");
-  
-    wRuedas(20,20,20);
-    delay(10); // Pequeña pausa para no saturar la CPU
+spTD = 20;
+spI = 20;
+delay(1269);
+
+spTD = 20;
+spI = -20;
+delay(600);
+
+spTD = 20;
+spI = 20;
+delay(1269);
+
+spTD = 20;
+spI = -20;
+delay(600);
+
+spTD = 20;
+spI = 20;
+delay(1269);
+
+spTD = 20;
+spI = -20;
+delay(600);
+
+spTD = 20;
+spI = 20;
+delay(1269);
+
+spTD = 0;
+spI = 0;
+
+delay(20000);
+
 }
