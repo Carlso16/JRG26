@@ -47,7 +47,7 @@ void wRuedas(int wDD,int wTD,int wI){
 
   wRuedas.dd *= 2.083; 
   wRuedas.td *= -2.083;
-  wRuedas.ti *= 2.083;
+  wRuedas.ti *= -2.083;
 
   float eDD = wDD - wRuedas.dd;
   float eTD = wTD - wRuedas.td;

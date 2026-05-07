@@ -4,8 +4,8 @@
 
 #define pinA1 26
 #define pinB1 25
-#define pinA2 32
-#define pinB2 33
+#define pinA2 3//32
+#define pinB2 2//33
 #define pinA3 34
 #define pinB3 39
 #define pinA4 35
