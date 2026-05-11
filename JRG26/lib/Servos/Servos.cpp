@@ -5,6 +5,13 @@
 #define Ki 20
 #define Vmax 11
 
+//100ms
+//Kp 0.15
+//Ki 1
+//20ms
+//Kp 0.4
+//Ki 5
+
 void accDD(int V);
 void accTD(int V);
 void accI (int V);
@@ -58,7 +65,7 @@ void wRuedas(int wDD,int wTD,int wI){
   float eDD = wDD - wRuedas.dd;
   float eTD = wTD - wRuedas.td;
   float eTI = wI - wRuedas.ti;
-  //Calculo de acción integral
+  //Calculo de acción integral con sntiwindup (solo si no está saturado)
   if(!satDD)
     IDD += Ki * eDD * Ts;
   if(!satTD)
@@ -104,7 +111,30 @@ void wRuedas(int wDD,int wTD,int wI){
   else 
     satI = false;
 
+    i++;
+  if(i > 50){
+    i = 0;
+    // --- IMPRESIÓN SIMPLE ---
+    Serial.print("DD -> SP:"); Serial.print(wDD); 
+    Serial.print(" w:"); Serial.print(wRuedas.dd); 
+    Serial.print(" Err:"); Serial.print(eDD); 
+    Serial.print(" V:"); Serial.println(VDD);
 
+    Serial.print("TD -> SP:"); Serial.print(wTD); 
+    Serial.print(" w:"); Serial.print(wRuedas.td); 
+    Serial.print(" Err:"); Serial.print(eTD); 
+    Serial.print(" V:"); Serial.println(VTD);
+
+    Serial.print("IZ -> SP:"); Serial.print(wI); 
+    Serial.print(" w:"); Serial.print(wRuedas.ti); 
+    Serial.print(" Err:"); Serial.print(eTI); 
+    Serial.print(" V:"); Serial.println(VI);
+
+    Serial.print("Var -> Ts:"); Serial.println(Ts); 
+
+    
+    Serial.println("---"); // Separador para cada ciclo
+  }
   //Aplicar acción
   accDD(VDD);
   accTD(VTD);

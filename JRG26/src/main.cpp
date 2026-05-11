@@ -1,13 +1,17 @@
 #include <Arduino.h>
-#include "Servos.h" // Asegúrate de que este es el nombre correcto de tu header[cite: 1, 2]
+#include "Servos.h"
+#include <Ticker.h>
+
+Ticker servo;
 
 void setup() {
   Serial.begin(115200);
   initPWM(10); 
-  
+  servo.attach_ms(10, []() {
+    wRuedas(20, 20, 20);
+  });
 }
 
 void loop() {
-    wRuedas(20,20,20);
-    delay(10); // Pequeña pausa para no saturar la CPU
+    
 }
