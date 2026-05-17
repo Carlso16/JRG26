@@ -11,7 +11,7 @@
 #endif
 
 #ifndef LASER_XSHUT_1
-#define LASER_XSHUT_1 18
+#define LASER_XSHUT_1 15
 #endif
 
 #ifndef LASER_XSHUT_2

@@ -4,8 +4,8 @@
 
 #define pinA1 26
 #define pinB1 25
-#define pinA2 32
-#define pinB2 33
+#define pinA2 3//32
+#define pinB2 2//33
 #define pinA3 34
 #define pinB3 39
 #define pinA4 35
@@ -21,6 +21,7 @@ float deltaT = 0;
 
 unsigned long Tant = 0;
 unsigned long T = 0;
+static uint32_t lastUs = 0;
 
 
 ESP32Encoder encoder1;
@@ -46,6 +47,7 @@ void initEncoders() {
     encoder4.setCount(0);
 
     Serial.println("Encoders inicializados");
+    
 }
 
 W readW(){
@@ -58,10 +60,10 @@ W readW(){
     for(int i=0;i<4;i++){
         deltaTita[i] = (2*3.1415f*(nuevaPosicion[i] - ultimaPosicion[i]))/680;
     }
-    velAng.dd = 1000*deltaTita[1]/deltaT;
-    velAng.ti = 1000*deltaTita[2]/deltaT;
-    velAng.di = 1000*deltaTita[0]/deltaT;
-    velAng.td = 1000*deltaTita[3]/deltaT;
+    velAng.di = 1000*deltaTita[1]/deltaT;
+    velAng.td = 1000*deltaTita[2]/deltaT;
+    velAng.dd = 1000*deltaTita[0]/deltaT;
+    velAng.ti = 1000*deltaTita[3]/deltaT;
     Tant = T;
     for(int i=0;i<4;i++){
         ultimaPosicion[i] = nuevaPosicion[i];
@@ -69,3 +71,19 @@ W readW(){
     return velAng;
 }
 
+PulseCount readCount(){
+    static PulseCount pulsos = {0,0,0,0,0,0,0,0}; 
+
+    // Guardar anterior ANTES de leer nuevo
+    pulsos.ddAnt = pulsos.dd;
+    pulsos.diAnt = pulsos.di;
+    pulsos.tdAnt = pulsos.td;
+    pulsos.tiAnt = pulsos.ti;
+    // micros() - lastUs >= 1000; lastUs += 1000;  //1 ms
+    pulsos.di = encoders[1]->getCount();  // era dd → real: di
+    pulsos.td = -encoders[2]->getCount(); // era di → real: td (invertido)
+    pulsos.ti = -encoders[3]->getCount();  // era td → real: ti
+    pulsos.dd = encoders[0]->getCount();  // era ti → real: dd
+
+    return pulsos;
+}
