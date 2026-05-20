@@ -9,14 +9,14 @@
 // VELOCIDADES DEL ROBOT
 // ============================================================
 
-#define B_D_DCHA -15
-#define B_D_IZDA  15
+#define B_D_DCHA -25
+#define B_D_IZDA  25
 
 #define B_D_DCHA_DESPACIO -10
 #define B_D_IZDA_DESPACIO  10
 
-#define B_I_DCHA  15
-#define B_I_IZDA -15
+#define B_I_DCHA  25
+#define B_I_IZDA -25
 
 #define B_I_DCHA_DESPACIO  10
 #define B_I_IZDA_DESPACIO -10
@@ -61,7 +61,7 @@ int CONSIGNA_IZDA = 0;
 #define DIR_LASER 0x29
 
 volatile int16_t laser = -1;
-int16_t dist_activacion = 800;
+int16_t dist_activacion = 100;
 volatile bool laser_detectado = false;
 
 // ============================================================

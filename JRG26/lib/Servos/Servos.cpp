@@ -1,8 +1,8 @@
 #include "Servos.h"
 #include "Encoder.h"
 
-#define Kp 0.4
-#define Ki 20
+#define Kp 0.25
+#define Ki 10
 #define Vmax 11
 
 //100ms
