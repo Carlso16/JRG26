@@ -12,20 +12,20 @@
 #define B_D_DCHA -25
 #define B_D_IZDA  25
 
-#define B_D_DCHA_DESPACIO -10
-#define B_D_IZDA_DESPACIO  10
+#define B_D_DCHA_DESPACIO -15
+#define B_D_IZDA_DESPACIO  15
 
 #define B_I_DCHA  25
 #define B_I_IZDA -25
 
-#define B_I_DCHA_DESPACIO  10
-#define B_I_IZDA_DESPACIO -10
+#define B_I_DCHA_DESPACIO  15
+#define B_I_IZDA_DESPACIO -15
 
-#define A_DCHA 30
-#define A_IZDA 30
+#define A_DCHA 20
+#define A_IZDA 20
 
-#define R_DCHA -30
-#define R_IZDA -30
+#define R_DCHA -20
+#define R_IZDA -20
 
 // ============================================================
 // PINES
@@ -37,12 +37,11 @@
 // SENSORES QTR / SIGUELÍNEAS
 // ============================================================
 
-#define UMBRAL_ON 3000
-#define NUM_SENSORES 1
-#define MIN_SENSORES_LINEA 1
+#define UMBRAL_ON 3500
+#define NUM_SENSORES 2
+#define MIN_SENSORES_LINEA 2
 
-const uint8_t sensorPins[NUM_SENSORES] = {4};
-
+const uint8_t sensorPins[NUM_SENSORES] = {32, 33};
 QTRSensors qtr;
 uint16_t sensorValues[NUM_SENSORES];
 
@@ -52,7 +51,11 @@ uint16_t sensorValues[NUM_SENSORES];
 int CONSIGNA_DCHA = 0;
 int CONSIGNA_IZDA = 0;
 
-
+// ============================================================
+// TIEMPOS
+// ============================================================
+uint32_t t0 = 0;
+uint32_t t_atacado = 0;
 
 // ============================================================
 // LÁSER
@@ -61,7 +64,7 @@ int CONSIGNA_IZDA = 0;
 #define DIR_LASER 0x29
 
 volatile int16_t laser = -1;
-int16_t dist_activacion = 100;
+int16_t dist_activacion = 600;
 volatile bool laser_detectado = false;
 
 // ============================================================
@@ -111,6 +114,7 @@ const char* estadoToTexto(Estado_t estado);
 
 void ticker_comprobar_laser();
 void ticker_ve_linea();
+void print_sensores_linea();
 
 // ============================================================
 // SETUP
@@ -139,12 +143,20 @@ void setup() {
 
   delay(500);
 
-  Serial.println("Inicializacion completada.");
+
+
+  for (uint16_t i = 0; i < 200; i++)
+  {
+    qtr.calibrate();
+  }
+
+    Serial.println("Inicializacion completada.");
 
   ticker_motores.attach_ms(10, aplicar_motores);
   ticker_laser.attach_ms(50, ticker_comprobar_laser);
   ticker_siguelineas.attach_ms(15, ticker_ve_linea);
   ticker_mef.attach_ms(100, aplicar_MEF);
+
 }
 
 // ============================================================
@@ -152,6 +164,9 @@ void setup() {
 // ============================================================
 
 void loop() {
+
+  print_sensores_linea();
+
   /*
   Serial.print("Laser: ");
   Serial.print(laser);
@@ -172,39 +187,67 @@ void loop() {
 // ============================================================
 // MEF
 // ============================================================
-
 void aplicar_MEF() {
   switch (estado_actual) {
+
     case REPOSO:
-      if (!laser_detectado) {
+      if (laser_detectado) {
+        estado_actual = E2;
+        t0 = millis();
+      } else {
         estado_actual = E1;
       }
+
       CONSIGNA_DCHA = 0;
       CONSIGNA_IZDA = 0;
       break;
 
+
     case E1:
+      // Estado normal: buscar rival
       if (laser_detectado) {
         estado_actual = E2;
+        t0 = millis();
       }
+
       CONSIGNA_DCHA = B_I_DCHA;
       CONSIGNA_IZDA = B_I_IZDA;
       break;
 
+
     case E2:
-      if (!laser_detectado) {
-        estado_actual = E1;
+      // Atacar mientras ve al rival
+      t_atacado = millis() - t0;
+
+      if (linea_detectada || !laser_detectado) {
+        estado_actual = E3;
+        t0 = millis();
       }
+
       CONSIGNA_DCHA = A_DCHA;
       CONSIGNA_IZDA = A_IZDA;
       break;
 
+
+    case E3:
+      // Retroceder el mismo tiempo que ha estado atacando
+      if (millis() - t0 >= t_atacado) {
+        estado_actual = E1;
+        t_atacado = 0;
+      }
+
+      CONSIGNA_DCHA = R_DCHA;
+      CONSIGNA_IZDA = R_IZDA;
+      break;
+
+
     default:
       estado_actual = REPOSO;
+      CONSIGNA_DCHA = 0;
+      CONSIGNA_IZDA = 0;
       break;
   }
 }
-
 // ============================================================
 // SENSORES
 // ============================================================
@@ -215,8 +258,7 @@ void ticker_comprobar_laser() {
 
   // Guarda también la distancia actual para poder imprimirla si quieres
   laser = leer_LASER(DIR_LASER);
-
-  digitalWrite(PIN_LED, laser_detectado ? HIGH : LOW);
+  //digitalWrite(PIN_LED, laser_detectado ? HIGH : LOW);
 }
 
 int16_t leer_laser() {
@@ -225,6 +267,7 @@ int16_t leer_laser() {
 
 void ticker_ve_linea() {
   linea_detectada = veLinea();
+  digitalWrite(PIN_LED, linea_detectada ? HIGH : LOW);
 }
 
 bool veLinea() {
@@ -233,6 +276,7 @@ bool veLinea() {
   uint8_t sensoresActivos = 0;
 
   for (uint8_t i = 0; i < NUM_SENSORES; i++) {
+
     if (sensorValues[i] > UMBRAL_ON) {
       sensoresActivos++;
 
@@ -243,6 +287,29 @@ bool veLinea() {
   }
 
   return false;
+}
+
+void print_sensores_linea() {
+  static uint32_t t_print = 0;
+
+  if (millis() - t_print >= 200) {
+    t_print = millis();
+
+    // Lectura usada por QTR
+    qtr.read(sensorValues);
+
+    Serial.print("QTR[0] GPIO32: ");
+    Serial.print(sensorValues[0]);
+
+    Serial.print(" | QTR[1] GPIO33: ");
+    Serial.print(sensorValues[1]);
+
+    Serial.print(" | linea_detectada: ");
+    Serial.print(linea_detectada);
+
+    Serial.print(" | umbral: ");
+    Serial.println(UMBRAL_ON);
+  }
 }
 
 // ============================================================
