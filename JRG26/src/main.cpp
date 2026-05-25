@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Ticker.h>
+#include <Preferences.h>
 
 #include "Laser_2.h"
 #include "Servos.h"
@@ -14,7 +15,11 @@
 const char* WIFI_SSID = "SUMO_ROBOT";
 const char* WIFI_PASS = "12345678";   // minimo 8 caracteres para SoftAP
 
-WebServer server(80);
+WebServer server(300);
+Preferences prefs;
+
+#define NVS_NAMESPACE "sumo_cfg"
+#define CONFIG_VERSION 1
 
 // ============================================================
 // VELOCIDADES DEL ROBOT
@@ -68,6 +73,7 @@ uint32_t T_ATAQUE    = 1288;
 uint32_t T_RETROCESO = 1288;
 uint32_t T_REPOSO    = 800;
 uint32_t T_inicio    = 800;
+uint32_t T_fin_busqueda = 4000;
 
 // ============================================================
 // PERIODOS TICKER
@@ -78,6 +84,15 @@ uint32_t T_inicio    = 800;
 uint32_t TICKER_LASER_MS   = 50;
 const uint32_t TICKER_MOTORES_MS = 10;
 uint32_t TICKER_MEF_MS     = 100;
+
+// ============================================================
+// CARGA DEL SERVIDOR WEB
+// ============================================================
+// El robot tiene prioridad. La web se atiende cada cierto tiempo
+// y el navegador pide estado con menor frecuencia.
+
+const uint32_t SERVER_HANDLE_MS = 20;
+const uint32_t WEB_STATUS_REFRESH_MS = 1000;
 
 // ============================================================
 // LASER
@@ -97,7 +112,7 @@ volatile int16_t distancia_inicio_ataque_mm = -1;
 // CONTROL GENERAL
 // ============================================================
 
-volatile bool robot_habilitado = true;
+volatile bool robot_habilitado = false;
 
 // ============================================================
 // FLAGS DE TAREAS
@@ -136,6 +151,45 @@ typedef enum {
 volatile Estado_t estado_actual = INICIO;
 
 // ============================================================
+// VALORES POR DEFECTO DE CONFIGURACION
+// ============================================================
+// IMPORTANTE: estos valores no cambian en ejecucion.
+// Sirven para restaurar la configuracion si NVS esta vacia/corrupta.
+
+const int16_t DEF_V_INICIO_DCHA    = -20;
+const int16_t DEF_V_INICIO_IZDA    = -20;
+
+const int16_t DEF_V_BUSCA_1_DCHA   = 25;
+const int16_t DEF_V_BUSCA_1_IZDA   = -25;
+
+const int16_t DEF_V_BUSCA_2_DCHA   = 25;
+const int16_t DEF_V_BUSCA_2_IZDA   = -25;
+
+const int16_t DEF_V_BUSCA_3_DCHA   = -15;
+const int16_t DEF_V_BUSCA_3_IZDA   = 15;
+
+const int16_t DEF_V_ATACA_DCHA     = 20;
+const int16_t DEF_V_ATACA_IZDA     = 20;
+
+const int16_t DEF_V_RETROCEDE_DCHA = -20;
+const int16_t DEF_V_RETROCEDE_IZDA = -20;
+
+const uint32_t DEF_T_inicio        = 800;
+const uint32_t DEF_T_REPOSO        = 800;
+const uint32_t DEF_T_ATAQUE        = 1288;
+const uint32_t DEF_T_RETROCESO     = 1288;
+const uint32_t DEF_T_fin_busqueda  = 4000;
+
+const uint32_t DEF_TICKER_LASER_MS = 50;
+const uint32_t DEF_TICKER_MEF_MS   = 100;
+
+const int16_t DEF_DIST_ACTIVACION  = 800;
+
+const float DEF_KP    = 0.25f;
+const float DEF_KI    = 10.0f;
+const float DEF_VMAX  = 11.0f;
+
+// ============================================================
 // PROTOTIPOS
 // ============================================================
 
@@ -143,11 +197,17 @@ void initSUMO();
 void init_wifi_ap();
 void init_servidor_web();
 
+void aplicar_configuracion_por_defecto();
+void cargar_configuracion();
+void guardar_configuracion();
+void restaurar_configuracion_por_defecto();
+
 void reprogramar_ticker_laser();
 void reprogramar_ticker_mef();
 
 void cb_ticker_laser();
 void atender_laser_pendiente();
+void atender_servidor_wifi();
 
 int16_t leer_laser();
 void actualizar_laser();
@@ -172,6 +232,8 @@ void handleConfig();
 void handleStart();
 void handleStop();
 void handleReset();
+void handleSaveConfig();
+void handleDefaultConfig();
 void handleNotFound();
 
 uint32_t leerArgU32(const char* nombre, uint32_t actual, uint32_t minimo, uint32_t maximo);
@@ -202,8 +264,19 @@ void setup() {
 // ============================================================
 
 void loop() {
-  server.handleClient();
+  // Primero sensores/control del robot, despues servidor web.
   atender_laser_pendiente();
+  atender_servidor_wifi();
+}
+
+void atender_servidor_wifi() {
+  static uint32_t t_server = 0;
+  uint32_t ahora = millis();
+
+  if (ahora - t_server >= SERVER_HANDLE_MS) {
+    t_server = ahora;
+    server.handleClient();
+  }
 }
 
 // ============================================================
@@ -213,6 +286,18 @@ void loop() {
 void initSUMO() {
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LOW);
+
+  aplicar_configuracion_por_defecto();
+  cargar_configuracion();
+
+  // Arranque seguro: se carga la configuracion, pero el robot no se mueve
+  // hasta que pulses START desde la web.
+  robot_habilitado = false;
+  estado_actual = INICIO;
+  t0 = 0;
+  t_atacado = 0;
+  CONSIGNA_DCHA = 0;
+  CONSIGNA_IZDA = 0;
 
   if (!inicializar_LASER()) {
     Serial.println("ERROR: inicializar_LASER() fallo. Revisa cableado/XSHUT/I2C.");
@@ -245,8 +330,182 @@ void init_servidor_web() {
   server.on("/api/start", HTTP_GET, handleStart);
   server.on("/api/stop", HTTP_GET, handleStop);
   server.on("/api/reset", HTTP_GET, handleReset);
+  server.on("/api/save_config", HTTP_GET, handleSaveConfig);
+  server.on("/api/default_config", HTTP_GET, handleDefaultConfig);
   server.onNotFound(handleNotFound);
   server.begin();
+}
+
+
+// ============================================================
+// CONFIGURACION PERSISTENTE NVS
+// ============================================================
+
+void aplicar_configuracion_por_defecto() {
+  V_INICIO_DCHA    = DEF_V_INICIO_DCHA;
+  V_INICIO_IZDA    = DEF_V_INICIO_IZDA;
+
+  V_BUSCA_1_DCHA   = DEF_V_BUSCA_1_DCHA;
+  V_BUSCA_1_IZDA   = DEF_V_BUSCA_1_IZDA;
+
+  V_BUSCA_2_DCHA   = DEF_V_BUSCA_2_DCHA;
+  V_BUSCA_2_IZDA   = DEF_V_BUSCA_2_IZDA;
+
+  V_BUSCA_3_DCHA   = DEF_V_BUSCA_3_DCHA;
+  V_BUSCA_3_IZDA   = DEF_V_BUSCA_3_IZDA;
+
+  V_ATACA_DCHA     = DEF_V_ATACA_DCHA;
+  V_ATACA_IZDA     = DEF_V_ATACA_IZDA;
+
+  V_RETROCEDE_DCHA = DEF_V_RETROCEDE_DCHA;
+  V_RETROCEDE_IZDA = DEF_V_RETROCEDE_IZDA;
+
+  T_inicio       = DEF_T_inicio;
+  T_REPOSO       = DEF_T_REPOSO;
+  T_ATAQUE       = DEF_T_ATAQUE;
+  T_RETROCESO    = DEF_T_RETROCESO;
+  T_fin_busqueda = DEF_T_fin_busqueda;
+
+  TICKER_LASER_MS = DEF_TICKER_LASER_MS;
+  TICKER_MEF_MS   = DEF_TICKER_MEF_MS;
+
+  dist_activacion = DEF_DIST_ACTIVACION;
+
+  setConstantesControl(DEF_KP, DEF_KI, DEF_VMAX, true);
+}
+
+void cargar_configuracion() {
+  prefs.begin(NVS_NAMESPACE, true);
+
+  uint32_t version = prefs.getUInt("version", 0);
+
+  if (version != CONFIG_VERSION) {
+    prefs.end();
+    Serial.println("No hay configuracion NVS valida. Usando valores por defecto.");
+    return;
+  }
+
+  TICKER_LASER_MS = prefs.getUInt("tl", DEF_TICKER_LASER_MS);
+  TICKER_MEF_MS   = prefs.getUInt("tf", DEF_TICKER_MEF_MS);
+
+  dist_activacion = prefs.getShort("umbral", DEF_DIST_ACTIVACION);
+
+  T_inicio       = prefs.getUInt("inicio", DEF_T_inicio);
+  T_REPOSO       = prefs.getUInt("reposo", DEF_T_REPOSO);
+  T_ATAQUE       = prefs.getUInt("ataque", DEF_T_ATAQUE);
+  T_RETROCESO    = prefs.getUInt("retro", DEF_T_RETROCESO);
+  T_fin_busqueda = prefs.getUInt("finbus", DEF_T_fin_busqueda);
+
+  V_INICIO_DCHA    = prefs.getShort("vi_d", DEF_V_INICIO_DCHA);
+  V_INICIO_IZDA    = prefs.getShort("vi_i", DEF_V_INICIO_IZDA);
+
+  V_BUSCA_1_DCHA   = prefs.getShort("vb1_d", DEF_V_BUSCA_1_DCHA);
+  V_BUSCA_1_IZDA   = prefs.getShort("vb1_i", DEF_V_BUSCA_1_IZDA);
+
+  V_BUSCA_2_DCHA   = prefs.getShort("vb2_d", DEF_V_BUSCA_2_DCHA);
+  V_BUSCA_2_IZDA   = prefs.getShort("vb2_i", DEF_V_BUSCA_2_IZDA);
+
+  V_BUSCA_3_DCHA   = prefs.getShort("vb3_d", DEF_V_BUSCA_3_DCHA);
+  V_BUSCA_3_IZDA   = prefs.getShort("vb3_i", DEF_V_BUSCA_3_IZDA);
+
+  V_ATACA_DCHA     = prefs.getShort("va_d", DEF_V_ATACA_DCHA);
+  V_ATACA_IZDA     = prefs.getShort("va_i", DEF_V_ATACA_IZDA);
+
+  V_RETROCEDE_DCHA = prefs.getShort("vr_d", DEF_V_RETROCEDE_DCHA);
+  V_RETROCEDE_IZDA = prefs.getShort("vr_i", DEF_V_RETROCEDE_IZDA);
+
+  float kp   = prefs.getFloat("kp", DEF_KP);
+  float ki   = prefs.getFloat("ki", DEF_KI);
+  float vmax = prefs.getFloat("vmax", DEF_VMAX);
+
+  prefs.end();
+
+  TICKER_LASER_MS = constrain(TICKER_LASER_MS, 50UL, 1000UL);
+  TICKER_MEF_MS   = constrain(TICKER_MEF_MS, 10UL, 1000UL);
+
+  dist_activacion = constrain(dist_activacion, 20, 4000);
+
+  T_inicio       = constrain(T_inicio, 0UL, 20000UL);
+  T_REPOSO       = constrain(T_REPOSO, 0UL, 20000UL);
+  T_ATAQUE       = constrain(T_ATAQUE, 0UL, 20000UL);
+  T_RETROCESO    = constrain(T_RETROCESO, 0UL, 20000UL);
+  T_fin_busqueda = constrain(T_fin_busqueda, 0UL, 60000UL);
+
+  V_INICIO_DCHA    = constrain(V_INICIO_DCHA, -100, 100);
+  V_INICIO_IZDA    = constrain(V_INICIO_IZDA, -100, 100);
+  V_BUSCA_1_DCHA   = constrain(V_BUSCA_1_DCHA, -100, 100);
+  V_BUSCA_1_IZDA   = constrain(V_BUSCA_1_IZDA, -100, 100);
+  V_BUSCA_2_DCHA   = constrain(V_BUSCA_2_DCHA, -100, 100);
+  V_BUSCA_2_IZDA   = constrain(V_BUSCA_2_IZDA, -100, 100);
+  V_BUSCA_3_DCHA   = constrain(V_BUSCA_3_DCHA, -100, 100);
+  V_BUSCA_3_IZDA   = constrain(V_BUSCA_3_IZDA, -100, 100);
+  V_ATACA_DCHA     = constrain(V_ATACA_DCHA, -100, 100);
+  V_ATACA_IZDA     = constrain(V_ATACA_IZDA, -100, 100);
+  V_RETROCEDE_DCHA = constrain(V_RETROCEDE_DCHA, -100, 100);
+  V_RETROCEDE_IZDA = constrain(V_RETROCEDE_IZDA, -100, 100);
+
+  kp   = constrain(kp, 0.0f, 5.0f);
+  ki   = constrain(ki, 0.0f, 100.0f);
+  vmax = constrain(vmax, 1.0f, 20.0f);
+
+  setConstantesControl(kp, ki, vmax, true);
+
+  Serial.println("Configuracion cargada desde NVS.");
+}
+
+void guardar_configuracion() {
+  prefs.begin(NVS_NAMESPACE, false);
+
+  prefs.putUInt("version", CONFIG_VERSION);
+
+  prefs.putUInt("tl", TICKER_LASER_MS);
+  prefs.putUInt("tf", TICKER_MEF_MS);
+
+  prefs.putShort("umbral", dist_activacion);
+
+  prefs.putUInt("inicio", T_inicio);
+  prefs.putUInt("reposo", T_REPOSO);
+  prefs.putUInt("ataque", T_ATAQUE);
+  prefs.putUInt("retro", T_RETROCESO);
+  prefs.putUInt("finbus", T_fin_busqueda);
+
+  prefs.putShort("vi_d", V_INICIO_DCHA);
+  prefs.putShort("vi_i", V_INICIO_IZDA);
+
+  prefs.putShort("vb1_d", V_BUSCA_1_DCHA);
+  prefs.putShort("vb1_i", V_BUSCA_1_IZDA);
+
+  prefs.putShort("vb2_d", V_BUSCA_2_DCHA);
+  prefs.putShort("vb2_i", V_BUSCA_2_IZDA);
+
+  prefs.putShort("vb3_d", V_BUSCA_3_DCHA);
+  prefs.putShort("vb3_i", V_BUSCA_3_IZDA);
+
+  prefs.putShort("va_d", V_ATACA_DCHA);
+  prefs.putShort("va_i", V_ATACA_IZDA);
+
+  prefs.putShort("vr_d", V_RETROCEDE_DCHA);
+  prefs.putShort("vr_i", V_RETROCEDE_IZDA);
+
+  prefs.putFloat("kp", getKpControl());
+  prefs.putFloat("ki", getKiControl());
+  prefs.putFloat("vmax", getVmaxControl());
+
+  prefs.end();
+
+  Serial.println("Configuracion guardada en NVS.");
+}
+
+void restaurar_configuracion_por_defecto() {
+  aplicar_configuracion_por_defecto();
+
+  reprogramar_ticker_laser();
+  reprogramar_ticker_mef();
+
+  guardar_configuracion();
+
+  robot_habilitado = false;
+  resetear_MEF();
 }
 
 // ============================================================
@@ -352,6 +611,12 @@ void aplicar_MEF() {
       if (laser_detectado) {
         registrar_distancia_inicio_ataque();
         estado_actual = ATACA;
+        t0 = millis();
+      }
+      else if (millis() - t0 >= T_fin_busqueda) {
+        // Si pasa demasiado tiempo buscando sin volver a ver el laser, se reinicia la busqueda.
+        limpiar_distancia_inicio_ataque();
+        estado_actual = BUSCA_1;
         t0 = millis();
       }
 
@@ -516,7 +781,7 @@ String paginaHTML() {
   html += F("<label>Kp</label><input id='kp' type='number' step='0.01' min='0' max='5'><br>");
   html += F("<label>Ki</label><input id='ki' type='number' step='0.1' min='0' max='100'><br>");
   html += F("<label>Vmax salida PI</label><input id='vmax' type='number' step='0.1' min='1' max='20'><br>");
-  html += F("<p><small>Al guardar Kp/Ki/Vmax se resetea la integral del PI para evitar arrastre de saturacion.</small></p>");
+  html += F("<p><small>Al aplicar cambios de Kp/Ki/Vmax se resetea la integral del PI para evitar arrastre de saturacion.</small></p>");
 
   html += F("<h4>Laser</h4>");
   html += F("<label>Umbral deteccion laser [mm]</label><input id='umbral' type='number' min='20' max='4000'><br>");
@@ -526,6 +791,7 @@ String paginaHTML() {
   html += F("<label>T_REPOSO solo tras inicio/reset</label><input id='reposo' type='number' min='0' max='20000'><br>");
   html += F("<label>T_ATAQUE</label><input id='ataque' type='number' min='0' max='20000'><br>");
   html += F("<label>T_RETROCESO</label><input id='retroceso' type='number' min='0' max='20000'><br>");
+  html += F("<label>T_FIN_BUSQUEDA</label><input id='fin_busqueda' type='number' min='0' max='60000'><br>");
 
   html += F("<h4>Velocidades [-100 a 100]</h4>");
   html += F("<div class='fila'><label>INICIO DCHA / IZDA</label><input id='v_inicio_d' type='number' min='-100' max='100'> <input id='v_inicio_i' type='number' min='-100' max='100'></div>");
@@ -535,13 +801,15 @@ String paginaHTML() {
   html += F("<div class='fila'><label>ATACA DCHA / IZDA</label><input id='v_ataca_d' type='number' min='-100' max='100'> <input id='v_ataca_i' type='number' min='-100' max='100'></div>");
   html += F("<div class='fila'><label>RETROCEDE DCHA / IZDA</label><input id='v_retro_d' type='number' min='-100' max='100'> <input id='v_retro_i' type='number' min='-100' max='100'></div>");
 
-  html += F("<br><button onclick='guardar()'>Guardar configuracion</button>");
+  html += F("<br><button onclick='aplicar()'>Aplicar cambios</button>");
+  html += F("<button onclick='guardarMemoria()'>Guardar en memoria</button>");
+  html += F("<button onclick='restaurarDefecto()'>Restaurar defecto</button>");
   html += F("<p id='msg'></p>");
   html += F("</div>");
 
   html += F("<script>");
   html += F("let primera=true;");
-  html += F("const campos=['tl','tf','kp','ki','vmax','umbral','inicio','reposo','ataque','retroceso','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_ataca_d','v_ataca_i','v_retro_d','v_retro_i'];");
+  html += F("const campos=['tl','tf','kp','ki','vmax','umbral','inicio','reposo','ataque','retroceso','fin_busqueda','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_ataca_d','v_ataca_i','v_retro_d','v_retro_i'];");
   html += F("function txt(b){return b?'SI':'NO'}");
   html += F("function cls(id,b){let e=document.getElementById(id);e.className=b?'ok':'bad'}");
   html += F("async function estado(){let r=await fetch('/api/status');let s=await r.json();");
@@ -557,11 +825,15 @@ String paginaHTML() {
   html += F("document.getElementById('ki_estado').innerText=s.ki;");
   html += F("document.getElementById('vmax_estado').innerText=s.vmax;");
   html += F("if(primera){campos.forEach(k=>{if(document.getElementById(k)){document.getElementById(k).value=s[k];}});primera=false;}}");
-  html += F("async function guardar(){let p=new URLSearchParams();campos.forEach(k=>p.append(k,document.getElementById(k).value));let r=await fetch('/api/config?'+p.toString());document.getElementById('msg').innerText=await r.text();primera=true;estado();}");
+  html += F("async function aplicar(){let p=new URLSearchParams();campos.forEach(k=>p.append(k,document.getElementById(k).value));let r=await fetch('/api/config?'+p.toString());document.getElementById('msg').innerText=await r.text();primera=true;estado();}");
+  html += F("async function guardarMemoria(){await aplicar();let r=await fetch('/api/save_config');document.getElementById('msg').innerText=await r.text();primera=true;estado();}");
+  html += F("async function restaurarDefecto(){let r=await fetch('/api/default_config');document.getElementById('msg').innerText=await r.text();primera=true;estado();}");
   html += F("async function startRobot(){await fetch('/api/start');estado();}");
   html += F("async function stopRobot(){await fetch('/api/stop');estado();}");
   html += F("async function resetRobot(){await fetch('/api/reset');estado();}");
-  html += F("setInterval(estado,500);estado();");
+  html += F("setInterval(estado,");
+  html += String(WEB_STATUS_REFRESH_MS);
+  html += F(");estado();");
   html += F("</script></body></html>");
 
   return html;
@@ -580,17 +852,24 @@ void handleConfig() {
   TICKER_LASER_MS = leerArgU32("tl", TICKER_LASER_MS, 50, 1000);
   TICKER_MEF_MS   = leerArgU32("tf", TICKER_MEF_MS, 10, 1000);
 
-  float kp = leerArgFloat("kp", getKpControl(), 0.0f, 5.0f);
-  float ki = leerArgFloat("ki", getKiControl(), 0.0f, 100.0f);
-  float vmax = leerArgFloat("vmax", getVmaxControl(), 1.0f, 20.0f);
-  setConstantesControl(kp, ki, vmax, true);
+  float kp_actual = getKpControl();
+  float ki_actual = getKiControl();
+  float vmax_actual = getVmaxControl();
+
+  float kp = leerArgFloat("kp", kp_actual, 0.0f, 5.0f);
+  float ki = leerArgFloat("ki", ki_actual, 0.0f, 100.0f);
+  float vmax = leerArgFloat("vmax", vmax_actual, 1.0f, 20.0f);
+
+  bool cambio_control = (kp != kp_actual) || (ki != ki_actual) || (vmax != vmax_actual);
+  setConstantesControl(kp, ki, vmax, cambio_control);
 
   dist_activacion = leerArgI16("umbral", dist_activacion, 20, 4000);
 
   T_inicio    = leerArgU32("inicio", T_inicio, 0, 20000);
   T_REPOSO    = leerArgU32("reposo", T_REPOSO, 0, 20000);
   T_ATAQUE    = leerArgU32("ataque", T_ATAQUE, 0, 20000);
-  T_RETROCESO = leerArgU32("retroceso", T_RETROCESO, 0, 20000);
+  T_RETROCESO    = leerArgU32("retroceso", T_RETROCESO, 0, 20000);
+  T_fin_busqueda = leerArgU32("fin_busqueda", T_fin_busqueda, 0, 60000);
 
   V_INICIO_DCHA    = leerArgI16("v_inicio_d", V_INICIO_DCHA, -100, 100);
   V_INICIO_IZDA    = leerArgI16("v_inicio_i", V_INICIO_IZDA, -100, 100);
@@ -613,7 +892,7 @@ void handleConfig() {
   reprogramar_ticker_laser();
   reprogramar_ticker_mef();
 
-  server.send(200, "text/plain", "Configuracion guardada");
+  server.send(200, "text/plain", "Configuracion aplicada en RAM");
 }
 
 void handleStart() {
@@ -649,6 +928,16 @@ void handleStop() {
 void handleReset() {
   resetear_MEF();
   server.send(200, "text/plain", "MEF reseteada");
+}
+
+void handleSaveConfig() {
+  guardar_configuracion();
+  server.send(200, "text/plain", "Configuracion guardada en memoria NVS");
+}
+
+void handleDefaultConfig() {
+  restaurar_configuracion_por_defecto();
+  server.send(200, "text/plain", "Valores por defecto restaurados y guardados en memoria");
 }
 
 void handleNotFound() {
@@ -771,6 +1060,9 @@ void enviarJSONStatus() {
   json += ",";
   json += "\"retroceso\":";
   json += String(T_RETROCESO);
+  json += ",";
+  json += "\"fin_busqueda\":";
+  json += String(T_fin_busqueda);
 
   json += ",";
   json += "\"v_inicio_d\":";
