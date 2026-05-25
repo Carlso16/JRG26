@@ -212,6 +212,7 @@ void aplicar_MEF() {
         t0 = millis();
       }
     break;
+
     case REPOSO:
       if (millis() - t0 >= T_REPOSO) { 
          estado_actual = E1;
@@ -221,11 +222,10 @@ void aplicar_MEF() {
       CONSIGNA_IZDA = 0;
       break;
 
-
     case E1:
       // BUSQUEDA HASTA VER
       if (laser_detectado) {
-        estado_actual = E4;
+        estado_actual = E2;
         t0 = millis();
       }
       CONSIGNA_DCHA = B_I_DCHA;
@@ -252,7 +252,6 @@ void aplicar_MEF() {
     break;
 
     case E4:
-      
       //hace un avance de 322 * 4 = 1288 
       if (millis() - t0 >= T_ATAQUE) {
         estado_actual = E5;
@@ -261,7 +260,6 @@ void aplicar_MEF() {
       CONSIGNA_DCHA = A_DCHA;
       CONSIGNA_IZDA = A_IZDA;
       break;
-
 
     case E5:
       // Retroceder el mismo tiempo que ha estado atacando
@@ -272,7 +270,6 @@ void aplicar_MEF() {
       CONSIGNA_DCHA = R_DCHA;
       CONSIGNA_IZDA = R_IZDA;
       break;
-
 
     default:
       estado_actual = REPOSO;
