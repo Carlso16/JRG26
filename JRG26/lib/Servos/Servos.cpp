@@ -1,9 +1,9 @@
 #include "Servos.h"
 #include "Encoder.h"
 
-#define Kp 0.25
-#define Ki 10
-#define Vmax 11
+float KpControl = 0.25f;
+float KiControl = 10.0f;
+float VmaxControl = 11.0f;
 
 //100ms
 //Kp 0.15
@@ -54,6 +54,16 @@ void initPWM(float ms) {
 }
 
 void wRuedas(int wDD,int wTD,int wI){
+  // Copia local de las constantes para que todo el calculo use los mismos valores.
+  float Kp = KpControl;
+  float Ki = KiControl;
+  float Vmax = VmaxControl;
+
+  // Evita divisiones raras si desde la web se intenta poner un Vmax no valido.
+  if (Vmax < 1.0f) {
+    Vmax = 1.0f;
+  }
+
   //Lectura w
   W wRuedas = readW();
   //Cambio de rad/s a 0-100
@@ -165,6 +175,10 @@ void wRuedas(int wDD,int wTD,int wI){
     Serial.println("---"); // Separador para cada ciclo
   }*/
 void accDD(int V) {
+    float Vmax = VmaxControl;
+    if (Vmax < 1.0f) {
+      Vmax = 1.0f;
+    }
     int duty = 255 * abs(V) / Vmax;
     duty = constrain(duty, 0, 255);
     if (V > 0) {
@@ -177,6 +191,10 @@ void accDD(int V) {
 }
 
 void accI(int V) {
+    float Vmax = VmaxControl;
+    if (Vmax < 1.0f) {
+      Vmax = 1.0f;
+    }
     int duty = 255 * abs(V) / Vmax;
     duty = constrain(duty, 0, 255);
     if (V > 0) {
@@ -191,6 +209,10 @@ void accI(int V) {
 
 
 void accTD(int V) {
+    float Vmax = VmaxControl;
+    if (Vmax < 1.0f) {
+      Vmax = 1.0f;
+    }
     int duty = 255 * abs(V) / Vmax;
     duty = constrain(duty, 0, 255);
     if (V > 0) {
@@ -201,6 +223,43 @@ void accTD(int V) {
       ledcWrite(CANAL_4, duty);
     }  
 }
+
+void resetControlMotores() {
+  IDD = 0;
+  ITD = 0;
+  II = 0;
+  satDD = false;
+  satTD = false;
+  satI = false;
+}
+
+void setConstantesControl(float nuevoKp, float nuevoKi, float nuevoVmax, bool resetIntegral) {
+  nuevoKp = constrain(nuevoKp, 0.0f, 5.0f);
+  nuevoKi = constrain(nuevoKi, 0.0f, 100.0f);
+  nuevoVmax = constrain(nuevoVmax, 1.0f, 20.0f);
+
+  KpControl = nuevoKp;
+  KiControl = nuevoKi;
+  VmaxControl = nuevoVmax;
+
+  if (resetIntegral) {
+    resetControlMotores();
+  }
+}
+
+float getKpControl() {
+  return KpControl;
+}
+
+float getKiControl() {
+  return KiControl;
+}
+
+float getVmaxControl() {
+  return VmaxControl;
+}
+
+
 
 
 

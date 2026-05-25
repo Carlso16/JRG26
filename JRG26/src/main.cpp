@@ -89,6 +89,10 @@ volatile int16_t laser = -1;
 int16_t dist_activacion = 800;
 volatile bool laser_detectado = false;
 
+// Distancia del laser que provoco el ultimo cambio BUSCA_3 -> ATACA.
+// Valor -1 significa None: todavia no se ha producido ese cambio en el ciclo actual.
+volatile int16_t distancia_inicio_ataque_mm = -1;
+
 // ============================================================
 // CONTROL GENERAL
 // ============================================================
@@ -147,6 +151,8 @@ void atender_laser_pendiente();
 
 int16_t leer_laser();
 void actualizar_laser();
+void limpiar_distancia_inicio_ataque();
+void registrar_distancia_inicio_ataque();
 
 void mover_robot(float velocidadDcha, float velocidadIzda);
 void aplicar_MEF();
@@ -170,6 +176,7 @@ void handleNotFound();
 
 uint32_t leerArgU32(const char* nombre, uint32_t actual, uint32_t minimo, uint32_t maximo);
 int16_t leerArgI16(const char* nombre, int16_t actual, int16_t minimo, int16_t maximo);
+float leerArgFloat(const char* nombre, float actual, float minimo, float maximo);
 void enviarJSONStatus();
 
 // ============================================================
@@ -312,6 +319,7 @@ void aplicar_MEF() {
       CONSIGNA_IZDA = 0;
 
       if (millis() - t0 >= T_REPOSO) {
+        limpiar_distancia_inicio_ataque();
         estado_actual = BUSCA_1;
         t0 = millis();
       }
@@ -342,6 +350,7 @@ void aplicar_MEF() {
     case BUSCA_3:
       // BUSQUEDA HASTA VOLVER A VER
       if (laser_detectado) {
+        registrar_distancia_inicio_ataque();
         estado_actual = ATACA;
         t0 = millis();
       }
@@ -366,6 +375,7 @@ void aplicar_MEF() {
         // Aqui NO se pasa por REPOSO.
         // El algoritmo queda en bucle:
         // BUSCA_1 -> BUSCA_2 -> BUSCA_3 -> ATACA -> RETROCEDE -> BUSCA_1
+        limpiar_distancia_inicio_ataque();
         estado_actual = BUSCA_1;
         t_atacado = 0;
         t0 = millis();
@@ -376,6 +386,7 @@ void aplicar_MEF() {
       break;
 
     default:
+      limpiar_distancia_inicio_ataque();
       estado_actual = BUSCA_1;
       t0 = millis();
       CONSIGNA_DCHA = 0;
@@ -397,6 +408,20 @@ void actualizar_laser() {
 
 int16_t leer_laser() {
   return leer_LASER(DIR_LASER);
+}
+
+void limpiar_distancia_inicio_ataque() {
+  distancia_inicio_ataque_mm = -1;
+}
+
+void registrar_distancia_inicio_ataque() {
+  // No leemos I2C aqui porque aplicar_MEF() viene de un Ticker.
+  // Guardamos la ultima lectura valida ya tomada en loop().
+  distancia_inicio_ataque_mm = -1;
+
+  if (laser >= 0) {
+    distancia_inicio_ataque_mm = laser;
+  }
 }
 
 // ============================================================
@@ -438,6 +463,7 @@ void aplicar_estado_start_stop() {
 }
 
 void resetear_MEF() {
+  limpiar_distancia_inicio_ataque();
   estado_actual = INICIO;
   t0 = 0;
   t_atacado = 0;
@@ -451,7 +477,7 @@ void resetear_MEF() {
 
 String paginaHTML() {
   String html;
-  html.reserve(9000);
+  html.reserve(11000);
 
   html += F("<!doctype html><html><head><meta charset='utf-8'>");
   html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
@@ -471,7 +497,9 @@ String paginaHTML() {
   html += F("<p>Estado MEF: <b id='estado'>-</b></p>");
   html += F("<p>Laser detectado: <b id='laser_detectado'>-</b></p>");
   html += F("<p>Distancia laser: <b id='laser'>-</b> mm</p>");
+  html += F("<p>Distancia cambio a ataque: <b id='laser_ataque'>None</b></p>");
   html += F("<p>Consignas: DCHA <b id='cd'>-</b> | IZDA <b id='ci'>-</b></p>");
+  html += F("<p>Control: Kp <b id='kp_estado'>-</b> | Ki <b id='ki_estado'>-</b> | Vmax <b id='vmax_estado'>-</b></p>");
   html += F("<button onclick='startRobot()'>START</button>");
   html += F("<button onclick='stopRobot()'>STOP</button>");
   html += F("<button onclick='resetRobot()'>RESET MEF</button>");
@@ -483,6 +511,12 @@ String paginaHTML() {
   html += F("<label>ticker_laser</label><input id='tl' type='number' min='50' max='1000'><br>");
   html += F("<label>ticker_mef</label><input id='tf' type='number' min='10' max='1000'><br>");
   html += F("<p>ticker_motores fijo: <b id='tm'>10</b> ms</p>");
+
+  html += F("<h4>Control PI motores</h4>");
+  html += F("<label>Kp</label><input id='kp' type='number' step='0.01' min='0' max='5'><br>");
+  html += F("<label>Ki</label><input id='ki' type='number' step='0.1' min='0' max='100'><br>");
+  html += F("<label>Vmax salida PI</label><input id='vmax' type='number' step='0.1' min='1' max='20'><br>");
+  html += F("<p><small>Al guardar Kp/Ki/Vmax se resetea la integral del PI para evitar arrastre de saturacion.</small></p>");
 
   html += F("<h4>Laser</h4>");
   html += F("<label>Umbral deteccion laser [mm]</label><input id='umbral' type='number' min='20' max='4000'><br>");
@@ -507,7 +541,7 @@ String paginaHTML() {
 
   html += F("<script>");
   html += F("let primera=true;");
-  html += F("const campos=['tl','tf','umbral','inicio','reposo','ataque','retroceso','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_ataca_d','v_ataca_i','v_retro_d','v_retro_i'];");
+  html += F("const campos=['tl','tf','kp','ki','vmax','umbral','inicio','reposo','ataque','retroceso','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_ataca_d','v_ataca_i','v_retro_d','v_retro_i'];");
   html += F("function txt(b){return b?'SI':'NO'}");
   html += F("function cls(id,b){let e=document.getElementById(id);e.className=b?'ok':'bad'}");
   html += F("async function estado(){let r=await fetch('/api/status');let s=await r.json();");
@@ -515,9 +549,13 @@ String paginaHTML() {
   html += F("document.getElementById('estado').innerText=s.estado;");
   html += F("document.getElementById('laser_detectado').innerText=txt(s.laser_detectado);cls('laser_detectado',s.laser_detectado);");
   html += F("document.getElementById('laser').innerText=s.laser_mm;");
+  html += F("document.getElementById('laser_ataque').innerText=(s.laser_ataque_mm===null?'None':s.laser_ataque_mm+' mm');");
   html += F("document.getElementById('cd').innerText=s.consigna_dcha;");
   html += F("document.getElementById('ci').innerText=s.consigna_izda;");
   html += F("document.getElementById('tm').innerText=s.tm;");
+  html += F("document.getElementById('kp_estado').innerText=s.kp;");
+  html += F("document.getElementById('ki_estado').innerText=s.ki;");
+  html += F("document.getElementById('vmax_estado').innerText=s.vmax;");
   html += F("if(primera){campos.forEach(k=>{if(document.getElementById(k)){document.getElementById(k).value=s[k];}});primera=false;}}");
   html += F("async function guardar(){let p=new URLSearchParams();campos.forEach(k=>p.append(k,document.getElementById(k).value));let r=await fetch('/api/config?'+p.toString());document.getElementById('msg').innerText=await r.text();primera=true;estado();}");
   html += F("async function startRobot(){await fetch('/api/start');estado();}");
@@ -541,6 +579,11 @@ void handleStatus() {
 void handleConfig() {
   TICKER_LASER_MS = leerArgU32("tl", TICKER_LASER_MS, 50, 1000);
   TICKER_MEF_MS   = leerArgU32("tf", TICKER_MEF_MS, 10, 1000);
+
+  float kp = leerArgFloat("kp", getKpControl(), 0.0f, 5.0f);
+  float ki = leerArgFloat("ki", getKiControl(), 0.0f, 100.0f);
+  float vmax = leerArgFloat("vmax", getVmaxControl(), 1.0f, 20.0f);
+  setConstantesControl(kp, ki, vmax, true);
 
   dist_activacion = leerArgI16("umbral", dist_activacion, 20, 4000);
 
@@ -648,9 +691,27 @@ int16_t leerArgI16(const char* nombre, int16_t actual, int16_t minimo, int16_t m
   return (int16_t)valor;
 }
 
+float leerArgFloat(const char* nombre, float actual, float minimo, float maximo) {
+  if (!server.hasArg(nombre)) {
+    return actual;
+  }
+
+  float valor = server.arg(nombre).toFloat();
+
+  if (valor < minimo) {
+    return minimo;
+  }
+
+  if (valor > maximo) {
+    return maximo;
+  }
+
+  return valor;
+}
+
 void enviarJSONStatus() {
   String json;
-  json.reserve(1600);
+  json.reserve(1800);
 
   json += "{";
   json += "\"robot_habilitado\":";
@@ -661,6 +722,13 @@ void enviarJSONStatus() {
   json += "\",";
   json += "\"laser_mm\":";
   json += String(laser);
+  json += ",";
+  json += "\"laser_ataque_mm\":";
+  if (distancia_inicio_ataque_mm < 0) {
+    json += "null";
+  } else {
+    json += String(distancia_inicio_ataque_mm);
+  }
   json += ",";
   json += "\"laser_detectado\":";
   json += laser_detectado ? "true" : "false";
@@ -679,6 +747,15 @@ void enviarJSONStatus() {
   json += ",";
   json += "\"tf\":";
   json += String(TICKER_MEF_MS);
+  json += ",";
+  json += "\"kp\":";
+  json += String(getKpControl(), 3);
+  json += ",";
+  json += "\"ki\":";
+  json += String(getKiControl(), 3);
+  json += ",";
+  json += "\"vmax\":";
+  json += String(getVmaxControl(), 3);
   json += ",";
   json += "\"umbral\":";
   json += String(dist_activacion);

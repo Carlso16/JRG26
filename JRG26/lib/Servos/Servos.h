@@ -29,4 +29,14 @@ void wRuedas(int wDD,int wTD,int wI);
 void accI(int V);
 void accDD(int V);
 void accTD(int V);
+
+// --- Configuracion del control PI de ruedas ---
+// Permite modificar las constantes desde el servidor web.
+void setConstantesControl(float nuevoKp, float nuevoKi, float nuevoVmax, bool resetIntegral = true);
+void resetControlMotores();
+
+float getKpControl();
+float getKiControl();
+float getVmaxControl();
+
 #endif
