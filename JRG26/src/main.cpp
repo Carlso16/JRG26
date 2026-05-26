@@ -15,7 +15,7 @@
 const char* WIFI_SSID = "SUMO_ROBOT";
 const char* WIFI_PASS = "12345678";   // minimo 8 caracteres para SoftAP
 
-WebServer server(300);
+WebServer server(80);
 Preferences prefs;
 
 #define NVS_NAMESPACE "sumo_cfg"
@@ -91,8 +91,8 @@ uint32_t TICKER_MEF_MS     = 100;
 // El robot tiene prioridad. La web se atiende cada cierto tiempo
 // y el navegador pide estado con menor frecuencia.
 
-const uint32_t SERVER_HANDLE_MS = 20;
-const uint32_t WEB_STATUS_REFRESH_MS = 1000;
+const uint32_t SERVER_HANDLE_MS = 100;
+const uint32_t WEB_STATUS_REFRESH_MS = 2000;
 
 // ============================================================
 // LASER
