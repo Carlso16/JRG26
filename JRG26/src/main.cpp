@@ -24,13 +24,6 @@ Preferences prefs;
 // ============================================================
 // VELOCIDADES DEL ROBOT
 // ============================================================
-// IMPORTANTE:
-// Antes estaban como #define. Asi no se pueden cambiar desde la web.
-// Ahora son variables para poder modificarlas en ejecucion.
-//
-// Rango recomendado: -100 a 100, aunque tu control actual trabaja bien
-// con valores pequenos tipo +-15, +-20, +-25.
-
 volatile int16_t V_INICIO_DCHA    = -20;
 volatile int16_t V_INICIO_IZDA    = -20;
 
@@ -52,21 +45,17 @@ volatile int16_t V_RETROCEDE_IZDA = -20;
 // ============================================================
 // PINES
 // ============================================================
-
 #define PIN_LED 2
 
 // ============================================================
 // MOTORES
-// No se toca la libreria de motores. Se mantiene tu llamada original.
 // ============================================================
-
 int CONSIGNA_DCHA = 0;
 int CONSIGNA_IZDA = 0;
 
 // ============================================================
 // TIEMPOS MEF
 // ============================================================
-
 uint32_t t0 = 0;
 uint32_t t_atacado   = 0;
 uint32_t T_ATAQUE    = 1288;
@@ -74,13 +63,11 @@ uint32_t T_RETROCESO = 1288;
 uint32_t T_REPOSO    = 800;
 uint32_t T_inicio    = 800;
 uint32_t T_fin_busqueda = 4000;
+uint32_t T_TRAN      = 100; // Modificado: Ahora es variable dinámica
 
 // ============================================================
 // PERIODOS TICKER
 // ============================================================
-// Se permite cambiar laser y MEF desde la web.
-// El ticker de motores se deja fijo porque funciona bien y no queremos tocarlo.
-
 uint32_t TICKER_LASER_MS   = 50;
 const uint32_t TICKER_MOTORES_MS = 10;
 uint32_t TICKER_MEF_MS     = 100;
@@ -88,45 +75,28 @@ uint32_t TICKER_MEF_MS     = 100;
 // ============================================================
 // CARGA DEL SERVIDOR WEB
 // ============================================================
-// El robot tiene prioridad. La web se atiende cada cierto tiempo
-// y el navegador pide estado con menor frecuencia.
-
 const uint32_t SERVER_HANDLE_MS = 40;
 const uint32_t WEB_STATUS_REFRESH_MS = 1000;
 
 // ============================================================
 // LASER
 // ============================================================
-
 #define DIR_LASER 0x29
 
 volatile int16_t laser = -1;
 int16_t dist_activacion = 800;
 volatile bool laser_detectado = false;
-
-// Distancia del laser que provoco el ultimo cambio BUSCA_3 -> ATACA.
-// Valor -1 significa None: todavia no se ha producido ese cambio en el ciclo actual.
 volatile int16_t distancia_inicio_ataque_mm = -1;
 
 // ============================================================
 // CONTROL GENERAL
 // ============================================================
-
 volatile bool robot_habilitado = false;
-
-// ============================================================
-// FLAGS DE TAREAS
-// IMPORTANTE:
-// El Ticker del laser NO lee I2C. Solo activa una bandera.
-// La lectura real del VL53L1X se hace en loop().
-// ============================================================
-
 volatile bool flag_laser = false;
 
 // ============================================================
 // TICKERS
 // ============================================================
-
 Ticker ticker_laser;
 Ticker ticker_motores;
 Ticker ticker_mef;
@@ -134,13 +104,13 @@ Ticker ticker_mef;
 // ============================================================
 // ESTADOS
 // ============================================================
-
 typedef enum {
   INICIO,
   REPOSO,
   BUSCA_1,
   BUSCA_2,
   BUSCA_3,
+  TRANSIATACA,
   ATACA,
   RETROCEDE,
   E6,
@@ -153,9 +123,6 @@ volatile Estado_t estado_actual = INICIO;
 // ============================================================
 // VALORES POR DEFECTO DE CONFIGURACION
 // ============================================================
-// IMPORTANTE: estos valores no cambian en ejecucion.
-// Sirven para restaurar la configuracion si NVS esta vacia/corrupta.
-
 const int16_t DEF_V_INICIO_DCHA    = -20;
 const int16_t DEF_V_INICIO_IZDA    = -20;
 
@@ -179,6 +146,7 @@ const uint32_t DEF_T_REPOSO        = 800;
 const uint32_t DEF_T_ATAQUE        = 1288;
 const uint32_t DEF_T_RETROCESO     = 1288;
 const uint32_t DEF_T_fin_busqueda  = 4000;
+const uint32_t DEF_T_TRAN          = 100; // Añadido valor por defecto
 
 const uint32_t DEF_TICKER_LASER_MS = 50;
 const uint32_t DEF_TICKER_MEF_MS   = 100;
@@ -192,7 +160,6 @@ const float DEF_VMAX  = 11.0f;
 // ============================================================
 // PROTOTIPOS
 // ============================================================
-
 void initSUMO();
 void init_wifi_ap();
 void init_servidor_web();
@@ -242,15 +209,13 @@ float leerArgFloat(const char* nombre, float actual, float minimo, float maximo)
 void enviarJSONStatus();
 
 // ============================================================
-// SETUP
+// SETUP & LOOP
 // ============================================================
-
 void setup() {
   Serial.begin(115200);
   delay(300);
 
   Serial.println("\n--- Inicializando robot ---");
-
   initSUMO();
 
   Serial.println("Inicializacion completada.");
@@ -259,12 +224,7 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 }
 
-// ============================================================
-// LOOP PRINCIPAL
-// ============================================================
-
 void loop() {
-  // Primero sensores/control del robot, despues servidor web.
   atender_laser_pendiente();
   atender_servidor_wifi();
 }
@@ -282,7 +242,6 @@ void atender_servidor_wifi() {
 // ============================================================
 // INIT GENERAL
 // ============================================================
-
 void initSUMO() {
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LOW);
@@ -290,8 +249,6 @@ void initSUMO() {
   aplicar_configuracion_por_defecto();
   cargar_configuracion();
 
-  // Arranque seguro: se carga la configuracion, pero el robot no se mueve
-  // hasta que pulses START desde la web.
   robot_habilitado = false;
   estado_actual = INICIO;
   t0 = 0;
@@ -307,14 +264,12 @@ void initSUMO() {
   }
 
   initPWM(TICKER_MOTORES_MS);
-
   init_wifi_ap();
   init_servidor_web();
 
   ticker_motores.attach_ms(TICKER_MOTORES_MS, aplicar_motores);
   ticker_mef.attach_ms(TICKER_MEF_MS, aplicar_MEF);
 
-  // Laser corregido: el callback del ticker ya no toca I2C.
   reprogramar_ticker_laser();
 }
 
@@ -336,27 +291,20 @@ void init_servidor_web() {
   server.begin();
 }
 
-
 // ============================================================
 // CONFIGURACION PERSISTENTE NVS
 // ============================================================
-
 void aplicar_configuracion_por_defecto() {
   V_INICIO_DCHA    = DEF_V_INICIO_DCHA;
   V_INICIO_IZDA    = DEF_V_INICIO_IZDA;
-
   V_BUSCA_1_DCHA   = DEF_V_BUSCA_1_DCHA;
   V_BUSCA_1_IZDA   = DEF_V_BUSCA_1_IZDA;
-
   V_BUSCA_2_DCHA   = DEF_V_BUSCA_2_DCHA;
   V_BUSCA_2_IZDA   = DEF_V_BUSCA_2_IZDA;
-
   V_BUSCA_3_DCHA   = DEF_V_BUSCA_3_DCHA;
   V_BUSCA_3_IZDA   = DEF_V_BUSCA_3_IZDA;
-
   V_ATACA_DCHA     = DEF_V_ATACA_DCHA;
   V_ATACA_IZDA     = DEF_V_ATACA_IZDA;
-
   V_RETROCEDE_DCHA = DEF_V_RETROCEDE_DCHA;
   V_RETROCEDE_IZDA = DEF_V_RETROCEDE_IZDA;
 
@@ -365,10 +313,10 @@ void aplicar_configuracion_por_defecto() {
   T_ATAQUE       = DEF_T_ATAQUE;
   T_RETROCESO    = DEF_T_RETROCESO;
   T_fin_busqueda = DEF_T_fin_busqueda;
+  T_TRAN         = DEF_T_TRAN; // Añadido
 
   TICKER_LASER_MS = DEF_TICKER_LASER_MS;
   TICKER_MEF_MS   = DEF_TICKER_MEF_MS;
-
   dist_activacion = DEF_DIST_ACTIVACION;
 
   setConstantesControl(DEF_KP, DEF_KI, DEF_VMAX, true);
@@ -376,7 +324,6 @@ void aplicar_configuracion_por_defecto() {
 
 void cargar_configuracion() {
   prefs.begin(NVS_NAMESPACE, true);
-
   uint32_t version = prefs.getUInt("version", 0);
 
   if (version != CONFIG_VERSION) {
@@ -387,7 +334,6 @@ void cargar_configuracion() {
 
   TICKER_LASER_MS = prefs.getUInt("tl", DEF_TICKER_LASER_MS);
   TICKER_MEF_MS   = prefs.getUInt("tf", DEF_TICKER_MEF_MS);
-
   dist_activacion = prefs.getShort("umbral", DEF_DIST_ACTIVACION);
 
   T_inicio       = prefs.getUInt("inicio", DEF_T_inicio);
@@ -395,34 +341,28 @@ void cargar_configuracion() {
   T_ATAQUE       = prefs.getUInt("ataque", DEF_T_ATAQUE);
   T_RETROCESO    = prefs.getUInt("retro", DEF_T_RETROCESO);
   T_fin_busqueda = prefs.getUInt("finbus", DEF_T_fin_busqueda);
+  T_TRAN         = prefs.getUInt("ttran", DEF_T_TRAN); // Cargar de NVS
 
   V_INICIO_DCHA    = prefs.getShort("vi_d", DEF_V_INICIO_DCHA);
   V_INICIO_IZDA    = prefs.getShort("vi_i", DEF_V_INICIO_IZDA);
-
   V_BUSCA_1_DCHA   = prefs.getShort("vb1_d", DEF_V_BUSCA_1_DCHA);
   V_BUSCA_1_IZDA   = prefs.getShort("vb1_i", DEF_V_BUSCA_1_IZDA);
-
   V_BUSCA_2_DCHA   = prefs.getShort("vb2_d", DEF_V_BUSCA_2_DCHA);
   V_BUSCA_2_IZDA   = prefs.getShort("vb2_i", DEF_V_BUSCA_2_IZDA);
-
   V_BUSCA_3_DCHA   = prefs.getShort("vb3_d", DEF_V_BUSCA_3_DCHA);
   V_BUSCA_3_IZDA   = prefs.getShort("vb3_i", DEF_V_BUSCA_3_IZDA);
-
   V_ATACA_DCHA     = prefs.getShort("va_d", DEF_V_ATACA_DCHA);
   V_ATACA_IZDA     = prefs.getShort("va_i", DEF_V_ATACA_IZDA);
-
   V_RETROCEDE_DCHA = prefs.getShort("vr_d", DEF_V_RETROCEDE_DCHA);
   V_RETROCEDE_IZDA = prefs.getShort("vr_i", DEF_V_RETROCEDE_IZDA);
 
   float kp   = prefs.getFloat("kp", DEF_KP);
   float ki   = prefs.getFloat("ki", DEF_KI);
   float vmax = prefs.getFloat("vmax", DEF_VMAX);
-
   prefs.end();
 
   TICKER_LASER_MS = constrain(TICKER_LASER_MS, 50UL, 1000UL);
   TICKER_MEF_MS   = constrain(TICKER_MEF_MS, 10UL, 1000UL);
-
   dist_activacion = constrain(dist_activacion, 20, 4000);
 
   T_inicio       = constrain(T_inicio, 0UL, 20000UL);
@@ -430,6 +370,7 @@ void cargar_configuracion() {
   T_ATAQUE       = constrain(T_ATAQUE, 0UL, 20000UL);
   T_RETROCESO    = constrain(T_RETROCESO, 0UL, 20000UL);
   T_fin_busqueda = constrain(T_fin_busqueda, 0UL, 60000UL);
+  T_TRAN         = constrain(T_TRAN, 0UL, 20000UL); // Acotar
 
   V_INICIO_DCHA    = constrain(V_INICIO_DCHA, -100, 100);
   V_INICIO_IZDA    = constrain(V_INICIO_IZDA, -100, 100);
@@ -449,18 +390,15 @@ void cargar_configuracion() {
   vmax = constrain(vmax, 1.0f, 20.0f);
 
   setConstantesControl(kp, ki, vmax, true);
-
   Serial.println("Configuracion cargada desde NVS.");
 }
 
 void guardar_configuracion() {
   prefs.begin(NVS_NAMESPACE, false);
-
   prefs.putUInt("version", CONFIG_VERSION);
 
   prefs.putUInt("tl", TICKER_LASER_MS);
   prefs.putUInt("tf", TICKER_MEF_MS);
-
   prefs.putShort("umbral", dist_activacion);
 
   prefs.putUInt("inicio", T_inicio);
@@ -468,29 +406,24 @@ void guardar_configuracion() {
   prefs.putUInt("ataque", T_ATAQUE);
   prefs.putUInt("retro", T_RETROCESO);
   prefs.putUInt("finbus", T_fin_busqueda);
+  prefs.putUInt("ttran", T_TRAN); // Guardar en NVS
 
   prefs.putShort("vi_d", V_INICIO_DCHA);
   prefs.putShort("vi_i", V_INICIO_IZDA);
-
   prefs.putShort("vb1_d", V_BUSCA_1_DCHA);
   prefs.putShort("vb1_i", V_BUSCA_1_IZDA);
-
   prefs.putShort("vb2_d", V_BUSCA_2_DCHA);
   prefs.putShort("vb2_i", V_BUSCA_2_IZDA);
-
   prefs.putShort("vb3_d", V_BUSCA_3_DCHA);
   prefs.putShort("vb3_i", V_BUSCA_3_IZDA);
-
   prefs.putShort("va_d", V_ATACA_DCHA);
   prefs.putShort("va_i", V_ATACA_IZDA);
-
   prefs.putShort("vr_d", V_RETROCEDE_DCHA);
   prefs.putShort("vr_i", V_RETROCEDE_IZDA);
 
   prefs.putFloat("kp", getKpControl());
   prefs.putFloat("ki", getKiControl());
   prefs.putFloat("vmax", getVmaxControl());
-
   prefs.end();
 
   Serial.println("Configuracion guardada en NVS.");
@@ -498,10 +431,8 @@ void guardar_configuracion() {
 
 void restaurar_configuracion_por_defecto() {
   aplicar_configuracion_por_defecto();
-
   reprogramar_ticker_laser();
   reprogramar_ticker_mef();
-
   guardar_configuracion();
 
   robot_habilitado = false;
@@ -511,23 +442,15 @@ void restaurar_configuracion_por_defecto() {
 // ============================================================
 // TICKERS
 // ============================================================
-
 void reprogramar_ticker_laser() {
   ticker_laser.detach();
-
-  // El VL53L1X esta configurado con timing budget de 50 ms.
-  // Bajar de 50 ms no aporta y puede generar lecturas repetidas o inestables.
   TICKER_LASER_MS = constrain(TICKER_LASER_MS, 50UL, 1000UL);
-
   ticker_laser.attach_ms(TICKER_LASER_MS, cb_ticker_laser);
 }
 
 void reprogramar_ticker_mef() {
   ticker_mef.detach();
-
-  // No lo bajes demasiado: la MEF no necesita ir al ritmo del control de motor.
   TICKER_MEF_MS = constrain(TICKER_MEF_MS, 10UL, 1000UL);
-
   ticker_mef.attach_ms(TICKER_MEF_MS, aplicar_MEF);
 }
 
@@ -536,10 +459,7 @@ void cb_ticker_laser() {
 }
 
 void atender_laser_pendiente() {
-  if (!flag_laser) {
-    return;
-  }
-
+  if (!flag_laser) return;
   flag_laser = false;
   actualizar_laser();
 }
@@ -547,7 +467,6 @@ void atender_laser_pendiente() {
 // ============================================================
 // MEF
 // ============================================================
-
 void aplicar_MEF() {
   if (!robot_habilitado) {
     CONSIGNA_DCHA = 0;
@@ -557,14 +476,9 @@ void aplicar_MEF() {
 
   switch (estado_actual) {
     case INICIO:
-      // Movimiento inicial.
-      if (t0 == 0) {
-        t0 = millis();
-      }
-
+      if (t0 == 0) t0 = millis();
       CONSIGNA_DCHA = V_INICIO_DCHA;
       CONSIGNA_IZDA = V_INICIO_IZDA;
-
       if (millis() - t0 >= T_inicio) {
         estado_actual = REPOSO;
         t0 = millis();
@@ -572,11 +486,8 @@ void aplicar_MEF() {
       break;
 
     case REPOSO:
-      // Reposo SOLO tras el inicio/reset.
-      // Despues de RETROCEDE se vuelve directamente a BUSCA_1.
       CONSIGNA_DCHA = 0;
       CONSIGNA_IZDA = 0;
-
       if (millis() - t0 >= T_REPOSO) {
         limpiar_distancia_inicio_ataque();
         estado_actual = BUSCA_1;
@@ -585,67 +496,63 @@ void aplicar_MEF() {
       break;
 
     case BUSCA_1:
-      // BUSQUEDA HASTA VER
       if (laser_detectado) {
         estado_actual = BUSCA_2;
         t0 = millis();
       }
-
       CONSIGNA_DCHA = V_BUSCA_1_DCHA;
       CONSIGNA_IZDA = V_BUSCA_1_IZDA;
       break;
 
     case BUSCA_2:
-      // BUSQUEDA HASTA NO VER
       if (!laser_detectado) {
         estado_actual = BUSCA_3;
         t0 = millis();
       }
-
       CONSIGNA_DCHA = V_BUSCA_2_DCHA;
       CONSIGNA_IZDA = V_BUSCA_2_IZDA;
       break;
 
     case BUSCA_3:
-      // BUSQUEDA HASTA VOLVER A VER
       if (laser_detectado) {
         registrar_distancia_inicio_ataque();
-        estado_actual = ATACA;
+        estado_actual = TRANSIATACA;
         t0 = millis();
       }
       else if (millis() - t0 >= T_fin_busqueda) {
-        // Si pasa demasiado tiempo buscando sin volver a ver el laser, se reinicia la busqueda.
         limpiar_distancia_inicio_ataque();
         estado_actual = BUSCA_1;
         t0 = millis();
       }
-
       CONSIGNA_DCHA = V_BUSCA_3_DCHA;
       CONSIGNA_IZDA = V_BUSCA_3_IZDA;
       break;
 
+    case TRANSIATACA:
+      if (millis() - t0 >= T_TRAN) { // Variable dinámica evaluada aquí
+        estado_actual = ATACA;  
+        t0 = millis();
+      }
+      CONSIGNA_DCHA = V_BUSCA_3_DCHA;
+      CONSIGNA_IZDA = V_BUSCA_3_IZDA;
+      break;
+      
     case ATACA:
       if (millis() - t0 >= T_ATAQUE) {
         estado_actual = RETROCEDE;
         t0 = millis();
       }
-
       CONSIGNA_DCHA = V_ATACA_DCHA;
       CONSIGNA_IZDA = V_ATACA_IZDA;
       break;
 
     case RETROCEDE:
       if (millis() - t0 >= T_RETROCESO) {
-        // CRITICO:
-        // Aqui NO se pasa por REPOSO.
-        // El algoritmo queda en bucle:
-        // BUSCA_1 -> BUSCA_2 -> BUSCA_3 -> ATACA -> RETROCEDE -> BUSCA_1
         limpiar_distancia_inicio_ataque();
         estado_actual = BUSCA_1;
         t_atacado = 0;
         t0 = millis();
       }
-
       CONSIGNA_DCHA = V_RETROCEDE_DCHA;
       CONSIGNA_IZDA = V_RETROCEDE_IZDA;
       break;
@@ -661,11 +568,9 @@ void aplicar_MEF() {
 }
 
 // ============================================================
-// LASER
+// LASER & MOTORES
 // ============================================================
-
 void actualizar_laser() {
-  // Lectura real por I2C fuera del callback del Ticker.
   laser = leer_LASER(DIR_LASER);
   laser_detectado = (laser >= 0 && laser <= dist_activacion);
   digitalWrite(PIN_LED, laser_detectado ? HIGH : LOW);
@@ -680,26 +585,17 @@ void limpiar_distancia_inicio_ataque() {
 }
 
 void registrar_distancia_inicio_ataque() {
-  // No leemos I2C aqui porque aplicar_MEF() viene de un Ticker.
-  // Guardamos la ultima lectura valida ya tomada en loop().
   distancia_inicio_ataque_mm = -1;
-
   if (laser >= 0) {
     distancia_inicio_ataque_mm = laser;
   }
 }
-
-// ============================================================
-// MOTORES
-// ============================================================
 
 void aplicar_motores() {
   mover_robot(CONSIGNA_DCHA, CONSIGNA_IZDA);
 }
 
 void mover_robot(float velocidadDcha, float velocidadIzda) {
-  // Se mantiene tu estructura original:
-  // derecha se manda a DD y TD, izquierda se manda al lado izquierdo.
   wRuedas(velocidadDcha, velocidadDcha, velocidadIzda);
 }
 
@@ -717,13 +613,7 @@ void mandar_robot_a_reposo() {
 }
 
 void aplicar_estado_start_stop() {
-  // START y STOP no deben reiniciar ni modificar INICIO.
-  // Si el robot esta en INICIO, se conserva ese estado.
-  // Si esta en cualquier otro estado, se manda a REPOSO.
-  if (estado_actual == INICIO) {
-    return;
-  }
-
+  if (estado_actual == INICIO) return;
   mandar_robot_a_reposo();
 }
 
@@ -737,12 +627,11 @@ void resetear_MEF() {
 }
 
 // ============================================================
-// SERVIDOR WEB
+// SERVIDOR WEB (PÁGINA HTML MODIFICADA)
 // ============================================================
-
 String paginaHTML() {
   String html;
-  html.reserve(11000);
+  html.reserve(11500);
 
   html += F("<!doctype html><html><head><meta charset='utf-8'>");
   html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
@@ -789,6 +678,7 @@ String paginaHTML() {
   html += F("<h4>Tiempos MEF [ms]</h4>");
   html += F("<label>T_inicio</label><input id='inicio' type='number' min='0' max='20000'><br>");
   html += F("<label>T_REPOSO solo tras inicio/reset</label><input id='reposo' type='number' min='0' max='20000'><br>");
+  html += F("<label>T_TRAN (Transicion Ataque)</label><input id='t_tran' type='number' min='0' max='20000'><br>"); // Añadido Input HTML
   html += F("<label>T_ATAQUE</label><input id='ataque' type='number' min='0' max='20000'><br>");
   html += F("<label>T_RETROCESO</label><input id='retroceso' type='number' min='0' max='20000'><br>");
   html += F("<label>T_FIN_BUSQUEDA</label><input id='fin_busqueda' type='number' min='0' max='60000'><br>");
@@ -809,7 +699,8 @@ String paginaHTML() {
 
   html += F("<script>");
   html += F("let primera=true;");
-  html += F("const campos=['tl','tf','kp','ki','vmax','umbral','inicio','reposo','ataque','retroceso','fin_busqueda','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_ataca_d','v_ataca_i','v_retro_d','v_retro_i'];");
+  // Añadido 't_tran' a la matriz de mapeo JS
+  html += F("const campos=['tl','tf','kp','ki','vmax','umbral','inicio','reposo','t_tran','ataque','retroceso','fin_busqueda','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_ataca_d','v_ataca_i','v_retro_d','v_retro_i'];");
   html += F("function txt(b){return b?'SI':'NO'}");
   html += F("function cls(id,b){let e=document.getElementById(id);e.className=b?'ok':'bad'}");
   html += F("async function estado(){let r=await fetch('/api/status');let s=await r.json();");
@@ -867,25 +758,21 @@ void handleConfig() {
 
   T_inicio    = leerArgU32("inicio", T_inicio, 0, 20000);
   T_REPOSO    = leerArgU32("reposo", T_REPOSO, 0, 20000);
+  T_TRAN      = leerArgU32("t_tran", T_TRAN, 0, 20000); // Añadido Procesamiento del argumento HTTP
   T_ATAQUE    = leerArgU32("ataque", T_ATAQUE, 0, 20000);
   T_RETROCESO    = leerArgU32("retroceso", T_RETROCESO, 0, 20000);
   T_fin_busqueda = leerArgU32("fin_busqueda", T_fin_busqueda, 0, 60000);
 
   V_INICIO_DCHA    = leerArgI16("v_inicio_d", V_INICIO_DCHA, -100, 100);
   V_INICIO_IZDA    = leerArgI16("v_inicio_i", V_INICIO_IZDA, -100, 100);
-
   V_BUSCA_1_DCHA   = leerArgI16("v_b1_d", V_BUSCA_1_DCHA, -100, 100);
   V_BUSCA_1_IZDA   = leerArgI16("v_b1_i", V_BUSCA_1_IZDA, -100, 100);
-
   V_BUSCA_2_DCHA   = leerArgI16("v_b2_d", V_BUSCA_2_DCHA, -100, 100);
   V_BUSCA_2_IZDA   = leerArgI16("v_b2_i", V_BUSCA_2_IZDA, -100, 100);
-
   V_BUSCA_3_DCHA   = leerArgI16("v_b3_d", V_BUSCA_3_DCHA, -100, 100);
   V_BUSCA_3_IZDA   = leerArgI16("v_b3_i", V_BUSCA_3_IZDA, -100, 100);
-
   V_ATACA_DCHA     = leerArgI16("v_ataca_d", V_ATACA_DCHA, -100, 100);
   V_ATACA_IZDA     = leerArgI16("v_ataca_i", V_ATACA_IZDA, -100, 100);
-
   V_RETROCEDE_DCHA = leerArgI16("v_retro_d", V_RETROCEDE_DCHA, -100, 100);
   V_RETROCEDE_IZDA = leerArgI16("v_retro_i", V_RETROCEDE_IZDA, -100, 100);
 
@@ -897,7 +784,6 @@ void handleConfig() {
 
 void handleStart() {
   bool estaba_en_inicio = (estado_actual == INICIO);
-
   robot_habilitado = true;
   aplicar_estado_start_stop();
 
@@ -910,11 +796,9 @@ void handleStart() {
 
 void handleStop() {
   bool estaba_en_inicio = (estado_actual == INICIO);
-
   robot_habilitado = false;
   aplicar_estado_start_stop();
 
-  // Parada inmediata de consigna sin cambiar la MEF si estaba en INICIO.
   CONSIGNA_DCHA = 0;
   CONSIGNA_IZDA = 0;
 
@@ -945,62 +829,35 @@ void handleNotFound() {
 }
 
 uint32_t leerArgU32(const char* nombre, uint32_t actual, uint32_t minimo, uint32_t maximo) {
-  if (!server.hasArg(nombre)) {
-    return actual;
-  }
-
+  if (!server.hasArg(nombre)) return actual;
   long valor = server.arg(nombre).toInt();
-
-  if (valor < (long)minimo) {
-    return minimo;
-  }
-
-  if (valor > (long)maximo) {
-    return maximo;
-  }
-
+  if (valor < (long)minimo) return minimo;
+  if (valor > (long)maximo) return maximo;
   return (uint32_t)valor;
 }
 
 int16_t leerArgI16(const char* nombre, int16_t actual, int16_t minimo, int16_t maximo) {
-  if (!server.hasArg(nombre)) {
-    return actual;
-  }
-
+  if (!server.hasArg(nombre)) return actual;
   long valor = server.arg(nombre).toInt();
-
-  if (valor < minimo) {
-    return minimo;
-  }
-
-  if (valor > maximo) {
-    return maximo;
-  }
-
+  if (valor < minimo) return minimo;
+  if (valor > maximo) return maximo;
   return (int16_t)valor;
 }
 
 float leerArgFloat(const char* nombre, float actual, float minimo, float maximo) {
-  if (!server.hasArg(nombre)) {
-    return actual;
-  }
-
+  if (!server.hasArg(nombre)) return actual;
   float valor = server.arg(nombre).toFloat();
-
-  if (valor < minimo) {
-    return minimo;
-  }
-
-  if (valor > maximo) {
-    return maximo;
-  }
-
+  if (valor < minimo) return minimo;
+  if (valor > maximo) return maximo;
   return valor;
 }
 
+// ============================================================
+// JSON STATUS
+// ============================================================
 void enviarJSONStatus() {
   String json;
-  json.reserve(1800);
+  json.reserve(1900);
 
   json += "{";
   json += "\"robot_habilitado\":";
@@ -1055,6 +912,9 @@ void enviarJSONStatus() {
   json += "\"reposo\":";
   json += String(T_REPOSO);
   json += ",";
+  json += "\"t_tran\":";      // Añadido al JSON de respuesta para el input del front
+  json += String(T_TRAN);
+  json += ",";
   json += "\"ataque\":";
   json += String(T_ATAQUE);
   json += ",";
@@ -1070,42 +930,36 @@ void enviarJSONStatus() {
   json += ",";
   json += "\"v_inicio_i\":";
   json += String(V_INICIO_IZDA);
-
   json += ",";
   json += "\"v_b1_d\":";
   json += String(V_BUSCA_1_DCHA);
   json += ",";
   json += "\"v_b1_i\":";
   json += String(V_BUSCA_1_IZDA);
-
   json += ",";
   json += "\"v_b2_d\":";
   json += String(V_BUSCA_2_DCHA);
   json += ",";
   json += "\"v_b2_i\":";
   json += String(V_BUSCA_2_IZDA);
-
   json += ",";
   json += "\"v_b3_d\":";
   json += String(V_BUSCA_3_DCHA);
   json += ",";
   json += "\"v_b3_i\":";
   json += String(V_BUSCA_3_IZDA);
-
   json += ",";
   json += "\"v_ataca_d\":";
   json += String(V_ATACA_DCHA);
   json += ",";
   json += "\"v_ataca_i\":";
   json += String(V_ATACA_IZDA);
-
   json += ",";
   json += "\"v_retro_d\":";
   json += String(V_RETROCEDE_DCHA);
   json += ",";
   json += "\"v_retro_i\":";
   json += String(V_RETROCEDE_IZDA);
-
   json += "}";
 
   server.sendHeader("Cache-Control", "no-store");
@@ -1115,7 +969,6 @@ void enviarJSONStatus() {
 // ============================================================
 // TEXTO ESTADOS
 // ============================================================
-
 const char* estadoToTexto(Estado_t estado) {
   switch (estado) {
     case INICIO:    return "INICIO";
@@ -1123,6 +976,7 @@ const char* estadoToTexto(Estado_t estado) {
     case BUSCA_1:   return "BUSCA_1";
     case BUSCA_2:   return "BUSCA_2";
     case BUSCA_3:   return "BUSCA_3";
+    case TRANSIATACA: return "TRANSIATACA"; // Corregido: no devolvía texto de este estado
     case ATACA:     return "ATACA";
     case RETROCEDE: return "RETROCEDE";
     case E6:        return "E6";
