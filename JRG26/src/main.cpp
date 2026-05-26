@@ -91,8 +91,8 @@ uint32_t TICKER_MEF_MS     = 100;
 // El robot tiene prioridad. La web se atiende cada cierto tiempo
 // y el navegador pide estado con menor frecuencia.
 
-const uint32_t SERVER_HANDLE_MS = 100;
-const uint32_t WEB_STATUS_REFRESH_MS = 2000;
+const uint32_t SERVER_HANDLE_MS = 40;
+const uint32_t WEB_STATUS_REFRESH_MS = 1000;
 
 // ============================================================
 // LASER
