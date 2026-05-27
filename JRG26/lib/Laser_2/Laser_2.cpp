@@ -47,6 +47,8 @@ bool inicializar_LASER() {
 
   g_vl53.setTimingBudget(50);
 
+  g_vl53.VL53L1X_SetDistanceMode(2);
+
   g_iniciado = true;
 
   Serial.println("VL53L1X inicializado OK");
