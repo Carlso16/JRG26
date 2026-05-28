@@ -113,7 +113,7 @@ typedef enum {
   E8
 } Estado_t;
 
-volatile Estado_t estado_actual = REPOSO;
+volatile Estado_t estado_actual = ATACA;
 
 // ============================================================
 // VALORES POR DEFECTO DE CONFIGURACION
@@ -132,7 +132,6 @@ const int16_t DEF_V_ATACA_IZDA     = 20;
 
 const int16_t DEF_V_RETROCEDE_DCHA = -20;
 const int16_t DEF_V_RETROCEDE_IZDA = -20;
-
 const uint32_t DEF_T_REPOSO        = 800;
 const uint32_t DEF_T_ATAQUE        = 1288;
 const uint32_t DEF_T_RETROCESO     = 1288;
@@ -143,7 +142,6 @@ const uint32_t DEF_TICKER_LASER_MS = 50;
 const uint32_t DEF_TICKER_MEF_MS   = 100;
 
 const int16_t DEF_DIST_ACTIVACION  = 800;
-
 const float DEF_KP    = 0.25f;
 const float DEF_KI    = 10.0f;
 const float DEF_VMAX  = 11.0f;
@@ -177,9 +175,8 @@ void aplicar_MEF();
 void aplicar_motores();
 
 void parar_robot_logico();
-void mandar_robot_a_reposo();
+void mandar_robot_a_ataca();
 void resetear_MEF();
-
 const char* estadoToTexto(Estado_t estado);
 
 String paginaHTML();
@@ -222,7 +219,6 @@ void loop() {
 void atender_servidor_wifi() {
   static uint32_t t_server = 0;
   uint32_t ahora = millis();
-
   if (ahora - t_server >= SERVER_HANDLE_MS) {
     t_server = ahora;
     server.handleClient();
@@ -240,12 +236,11 @@ void initSUMO() {
   cargar_configuracion();
 
   robot_habilitado = false;
-  estado_actual = REPOSO;
+  estado_actual = ATACA; 
   t0 = 0;
   t_atacado = 0;
   CONSIGNA_DCHA = 0;
   CONSIGNA_IZDA = 0;
-
   if (!inicializar_LASER()) {
     Serial.println("ERROR: inicializar_LASER() fallo. Revisa cableado/XSHUT/I2C.");
     while (1) {
@@ -295,13 +290,11 @@ void aplicar_configuracion_por_defecto() {
   V_ATACA_IZDA     = DEF_V_ATACA_IZDA;
   V_RETROCEDE_DCHA = DEF_V_RETROCEDE_DCHA;
   V_RETROCEDE_IZDA = DEF_V_RETROCEDE_IZDA;
-
   T_REPOSO       = DEF_T_REPOSO;
   T_ATAQUE       = DEF_T_ATAQUE;
   T_RETROCESO    = DEF_T_RETROCESO;
   T_fin_busqueda = DEF_T_fin_busqueda;
   T_TRAN         = DEF_T_TRAN;
-
   TICKER_LASER_MS = DEF_TICKER_LASER_MS;
   TICKER_MEF_MS   = DEF_TICKER_MEF_MS;
   dist_activacion = DEF_DIST_ACTIVACION;
@@ -328,7 +321,6 @@ void cargar_configuracion() {
   T_RETROCESO    = prefs.getUInt("retro", DEF_T_RETROCESO);
   T_fin_busqueda = prefs.getUInt("finbus", DEF_T_fin_busqueda);
   T_TRAN         = prefs.getUInt("ttran", DEF_T_TRAN);
-
   V_BUSCA_1_DCHA   = prefs.getShort("vb1_d", DEF_V_BUSCA_1_DCHA);
   V_BUSCA_1_IZDA   = prefs.getShort("vb1_i", DEF_V_BUSCA_1_IZDA);
   V_BUSCA_2_DCHA   = prefs.getShort("vb2_d", DEF_V_BUSCA_2_DCHA);
@@ -345,7 +337,7 @@ void cargar_configuracion() {
   float vmax = prefs.getFloat("vmax", DEF_VMAX);
   prefs.end();
 
-  TICKER_LASER_MS = constrain(TICKER_LASER_MS, 50UL, 1000UL);
+  TICKER_LASER_MS = constrain(TICKER_LASER_MS, 50UL, 1000UL); 
   TICKER_MEF_MS   = constrain(TICKER_MEF_MS, 10UL, 1000UL);
   dist_activacion = constrain(dist_activacion, 20, 4000);
 
@@ -354,7 +346,6 @@ void cargar_configuracion() {
   T_RETROCESO    = constrain(T_RETROCESO, 0UL, 20000UL);
   T_fin_busqueda = constrain(T_fin_busqueda, 0UL, 60000UL);
   T_TRAN         = constrain(T_TRAN, 0UL, 20000UL);
-
   V_BUSCA_1_DCHA   = constrain(V_BUSCA_1_DCHA, -100, 100);
   V_BUSCA_1_IZDA   = constrain(V_BUSCA_1_IZDA, -100, 100);
   V_BUSCA_2_DCHA   = constrain(V_BUSCA_2_DCHA, -100, 100);
@@ -384,7 +375,7 @@ void guardar_configuracion() {
 
   prefs.putUInt("reposo", T_REPOSO);
   prefs.putUInt("ataque", T_ATAQUE);
-  prefs.putUInt("retro", T_RETROCESO);
+  prefs.putUInt("retroceso", T_RETROCESO);
   prefs.putUInt("finbus", T_fin_busqueda);
   prefs.putUInt("ttran", T_TRAN);
 
@@ -453,6 +444,30 @@ void aplicar_MEF() {
   }
 
   switch (estado_actual) {
+    case ATACA:
+      if (t0 == 0) t0 = millis();
+      
+      CONSIGNA_DCHA = V_ATACA_DCHA;
+      CONSIGNA_IZDA = V_ATACA_IZDA;
+
+      if (millis() - t0 >= T_ATAQUE) {
+        estado_actual = RETROCEDE;
+        t0 = millis();
+      }
+      break;
+
+    case RETROCEDE:
+      if (millis() - t0 >= T_RETROCESO) {
+        limpiar_distancia_inicio_ataque();
+        // Flujo restaurado: vuelve a buscar con el láser tras el ataque
+        estado_actual = BUSCA_1;
+        t_atacado = 0;
+        t0 = millis();
+      }
+      CONSIGNA_DCHA = V_RETROCEDE_DCHA;
+      CONSIGNA_IZDA = V_RETROCEDE_IZDA;
+      break;
+
     case REPOSO:
       if (t0 == 0) t0 = millis();
       CONSIGNA_DCHA = 0;
@@ -499,29 +514,9 @@ void aplicar_MEF() {
 
     case TRANSIATACA:
       if (millis() - t0 >= T_TRAN) {
-        estado_actual = ATACA;  
+        estado_actual = ATACA;
         t0 = millis();
       }
-      break;
-
-    case ATACA:
-      if (millis() - t0 >= T_ATAQUE) {
-        estado_actual = RETROCEDE;
-        t0 = millis();
-      }
-      CONSIGNA_DCHA = V_ATACA_DCHA;
-      CONSIGNA_IZDA = V_ATACA_IZDA;
-      break;
-
-    case RETROCEDE:
-      if (millis() - t0 >= T_RETROCESO) {
-        limpiar_distancia_inicio_ataque();
-        estado_actual = BUSCA_1;
-        t_atacado = 0;
-        t0 = millis();
-      }
-      CONSIGNA_DCHA = V_RETROCEDE_DCHA;
-      CONSIGNA_IZDA = V_RETROCEDE_IZDA;
       break;
 
     default:
@@ -568,11 +563,11 @@ void mover_robot(float velocidadDcha, float velocidadIzda) {
 
 void parar_robot_logico() {
   robot_habilitado = false;
-  mandar_robot_a_reposo();
+  mandar_robot_a_ataca();
 }
 
-void mandar_robot_a_reposo() {
-  estado_actual = REPOSO;
+void mandar_robot_a_ataca() {
+  estado_actual = ATACA; 
   t0 = millis();
   t_atacado = 0;
   CONSIGNA_DCHA = 0;
@@ -581,7 +576,7 @@ void mandar_robot_a_reposo() {
 
 void resetear_MEF() {
   limpiar_distancia_inicio_ataque();
-  estado_actual = REPOSO;
+  estado_actual = ATACA; 
   t0 = 0;
   t_atacado = 0;
   CONSIGNA_DCHA = 0;
@@ -624,7 +619,7 @@ String paginaHTML() {
   html += F("<div class='box'><h3>Configurar</h3>");
 
   html += F("<h4>Tickers [ms]</h4>");
-  html += F("<label>ticker_laser</label><input id='tl' type='number' min=50' max='1000'><br>");
+  html += F("<label>ticker_laser</label><input id='tl' type='number' min='50' max='1000'><br>"); 
   html += F("<label>ticker_mef</label><input id='tf' type='number' min='10' max='1000'><br>");
   html += F("<p>ticker_motores fijo: <b id='tm'>10</b> ms</p>");
 
@@ -632,12 +627,11 @@ String paginaHTML() {
   html += F("<label>Kp</label><input id='kp' type='number' step='0.01' min='0' max='5'><br>");
   html += F("<label>Ki</label><input id='ki' type='number' step='0.1' min='0' max='100'><br>");
   html += F("<label>Vmax salida PI</label><input id='vmax' type='number' step='0.1' min='1' max='20'><br>");
-
   html += F("<h4>Laser</h4>");
   html += F("<label>Umbral deteccion laser [mm]</label><input id='umbral' type='number' min='20' max='4000'><br>");
 
   html += F("<h4>Tiempos MEF [ms]</h4>");
-  html += F("<label>T_REPOSO inicial</label><input id='reposo' type='number' min='0' max='20000'><br>");
+  html += F("<label>T_REPOSO</label><input id='reposo' type='number' min='0' max='20000'><br>");
   html += F("<label>T_TRAN (Transicion Ataque)</label><input id='t_tran' type='number' min='0' max='20000'><br>");
   html += F("<label>T_ATAQUE</label><input id='ataque' type='number' min='0' max='20000'><br>");
   html += F("<label>T_RETROCESO</label><input id='retroceso' type='number' min='0' max='20000'><br>");
@@ -649,7 +643,6 @@ String paginaHTML() {
   html += F("<div class='fila'><label>BUSCA_3 DCHA / IZDA</label><input id='v_b3_d' type='number' min='-100' max='100'> <input id='v_b3_i' type='number' min='-100' max='100'></div>");
   html += F("<div class='fila'><label>ATACA DCHA / IZDA</label><input id='v_ataca_d' type='number' min='-100' max='100'> <input id='v_ataca_i' type='number' min='-100' max='100'></div>");
   html += F("<div class='fila'><label>RETROCEDE DCHA / IZDA</label><input id='v_retro_d' type='number' min='-100' max='100'> <input id='v_retro_i' type='number' min='-100' max='100'></div>");
-
   html += F("<br><button onclick='aplicar()'>Aplicar cambios</button>");
   html += F("<button onclick='guardarMemoria()'>Guardar en memoria</button>");
   html += F("<button onclick='restaurarDefecto()'>Restaurar defecto</button>");
@@ -684,7 +677,6 @@ String paginaHTML() {
   html += String(WEB_STATUS_REFRESH_MS);
   html += F(");estado();");
   html += F("</script></body></html>");
-
   return html;
 }
 
@@ -698,7 +690,7 @@ void handleStatus() {
 }
 
 void handleConfig() {
-  TICKER_LASER_MS = leerArgU32("tl", TICKER_LASER_MS, 50, 1000);
+  TICKER_LASER_MS = leerArgU32("tl", TICKER_LASER_MS, 50, 1000); 
   TICKER_MEF_MS   = leerArgU32("tf", TICKER_MEF_MS, 10, 1000);
 
   float kp_actual = getKpControl();
@@ -708,10 +700,8 @@ void handleConfig() {
   float kp = leerArgFloat("kp", kp_actual, 0.0f, 5.0f);
   float ki = leerArgFloat("ki", ki_actual, 0.0f, 100.0f);
   float vmax = leerArgFloat("vmax", vmax_actual, 1.0f, 20.0f);
-
   bool cambio_control = (kp != kp_actual) || (ki != ki_actual) || (vmax != vmax_actual);
   setConstantesControl(kp, ki, vmax, cambio_control);
-
   dist_activacion = leerArgI16("umbral", dist_activacion, 20, 4000);
 
   T_REPOSO    = leerArgU32("reposo", T_REPOSO, 0, 20000);
@@ -739,21 +729,21 @@ void handleConfig() {
 
 void handleStart() {
   robot_habilitado = true;
-  mandar_robot_a_reposo();
-  server.send(200, "text/plain", "Robot habilitado; enviado a REPOSO");
+  mandar_robot_a_ataca(); 
+  server.send(200, "text/plain", "Robot habilitado; enviado a ATACA");
 }
 
 void handleStop() {
   robot_habilitado = false;
   CONSIGNA_DCHA = 0;
   CONSIGNA_IZDA = 0;
-  mandar_robot_a_reposo();
-  server.send(200, "text/plain", "Robot parado; enviado a REPOSO");
+  mandar_robot_a_ataca(); 
+  server.send(200, "text/plain", "Robot parado; listo en estado ATACA");
 }
 
 void handleReset() {
   resetear_MEF();
-  server.send(200, "text/plain", "MEF reseteada");
+  server.send(200, "text/plain", "MEF reseteada a estado ATACA");
 }
 
 void handleSaveConfig() {
