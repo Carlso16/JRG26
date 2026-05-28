@@ -5,22 +5,19 @@
 #include <Ticker.h>
 #include <Preferences.h>
 
-
 #include "Laser_2.h"
 #include "Servos.h"
 
 // ============================================================
 // WIFI / SERVIDOR WEB
 // ============================================================
-
 const char* WIFI_SSID = "SUMO_ROBOT";
-const char* WIFI_PASS = "12345678";   // minimo 8 caracteres para SoftAP
+const char* WIFI_PASS = "12345678";
 
 WebServer server(80);
 Preferences prefs;
-
 #define NVS_NAMESPACE "sumo_cfg"
-#define CONFIG_VERSION 1
+#define CONFIG_VERSION 3
 
 // ============================================================
 // VELOCIDADES DEL ROBOT
@@ -37,11 +34,15 @@ volatile int16_t V_BUSCA_2_IZDA   = -25;
 volatile int16_t V_BUSCA_3_DCHA   = -15;
 volatile int16_t V_BUSCA_3_IZDA   = 15;
 
-volatile int16_t V_ATACA_DCHA     = 20;
-volatile int16_t V_ATACA_IZDA     = 20;
+volatile int16_t V_ATACA_1_DCHA   = 20;
+volatile int16_t V_ATACA_1_IZDA   = 20;
+volatile int16_t V_ATACA_2_DCHA   = 40;
+volatile int16_t V_ATACA_2_IZDA   = 40;
 
-volatile int16_t V_RETROCEDE_DCHA = -20;
-volatile int16_t V_RETROCEDE_IZDA = -20;
+volatile int16_t V_RETROCEDE_1_DCHA = -20;
+volatile int16_t V_RETROCEDE_1_IZDA = -20;
+volatile int16_t V_RETROCEDE_2_DCHA = -40;
+volatile int16_t V_RETROCEDE_2_IZDA = -40;
 
 // ============================================================
 // PINES
@@ -59,12 +60,14 @@ int CONSIGNA_IZDA = 0;
 // ============================================================
 uint32_t t0 = 0;
 uint32_t t_atacado   = 0;
-uint32_t T_ATAQUE    = 1288;
-uint32_t T_RETROCESO = 1288;
-uint32_t T_REPOSO    = 800;
 uint32_t T_inicio    = 800;
 uint32_t T_fin_busqueda = 4000;
-uint32_t T_TRAN      = 100; // Modificado: Ahora es variable dinámica
+uint32_t T_REPOSO    = 800;
+
+uint32_t T_ATAQUE_1    = 600;
+uint32_t T_ATAQUE_2    = 688;
+uint32_t T_RETROCESO_1 = 600;
+uint32_t T_RETROCESO_2 = 688;
 
 // ============================================================
 // PERIODOS TICKER
@@ -111,14 +114,11 @@ typedef enum {
   BUSCA_1,
   BUSCA_2,
   BUSCA_3,
-  TRANSIATACA,
-  ATACA,
-  RETROCEDE,
-  E6,
-  E7,
-  E8
+  ATACA_1,
+  ATACA_2,
+  RETROCEDE_1,
+  RETROCEDE_2
 } Estado_t;
-
 volatile Estado_t estado_actual = INICIO;
 
 // ============================================================
@@ -136,22 +136,27 @@ const int16_t DEF_V_BUSCA_2_IZDA   = -25;
 const int16_t DEF_V_BUSCA_3_DCHA   = -15;
 const int16_t DEF_V_BUSCA_3_IZDA   = 15;
 
-const int16_t DEF_V_ATACA_DCHA     = 20;
-const int16_t DEF_V_ATACA_IZDA     = 20;
+const int16_t DEF_V_ATACA_1_DCHA   = 20;
+const int16_t DEF_V_ATACA_1_IZDA   = 20;
+const int16_t DEF_V_ATACA_2_DCHA   = 40;
+const int16_t DEF_V_ATACA_2_IZDA   = 40;
 
-const int16_t DEF_V_RETROCEDE_DCHA = -20;
-const int16_t DEF_V_RETROCEDE_IZDA = -20;
+const int16_t DEF_V_RETROCEDE_1_DCHA = -20;
+const int16_t DEF_V_RETROCEDE_1_IZDA = -20;
+const int16_t DEF_V_RETROCEDE_2_DCHA = -40;
+const int16_t DEF_V_RETROCEDE_2_IZDA = -40;
 
 const uint32_t DEF_T_inicio        = 800;
 const uint32_t DEF_T_REPOSO        = 800;
-const uint32_t DEF_T_ATAQUE        = 1288;
-const uint32_t DEF_T_RETROCESO     = 1288;
 const uint32_t DEF_T_fin_busqueda  = 4000;
-const uint32_t DEF_T_TRAN          = 100; // Añadido valor por defecto
+
+const uint32_t DEF_T_ATAQUE_1      = 600;
+const uint32_t DEF_T_ATAQUE_2      = 688;
+const uint32_t DEF_T_RETROCESO_1   = 600;
+const uint32_t DEF_T_RETROCESO_2   = 688;
 
 const uint32_t DEF_TICKER_LASER_MS = 50;
 const uint32_t DEF_TICKER_MEF_MS   = 100;
-
 const int16_t DEF_DIST_ACTIVACION  = 800;
 
 const float DEF_KP    = 0.25f;
@@ -185,7 +190,6 @@ void registrar_distancia_inicio_ataque();
 void mover_robot(float velocidadDcha, float velocidadIzda);
 void aplicar_MEF();
 void aplicar_motores();
-
 void parar_robot_logico();
 void mandar_robot_a_reposo();
 void aplicar_estado_start_stop();
@@ -203,7 +207,6 @@ void handleReset();
 void handleSaveConfig();
 void handleDefaultConfig();
 void handleNotFound();
-
 uint32_t leerArgU32(const char* nombre, uint32_t actual, uint32_t minimo, uint32_t maximo);
 int16_t leerArgI16(const char* nombre, int16_t actual, int16_t minimo, int16_t maximo);
 float leerArgFloat(const char* nombre, float actual, float minimo, float maximo);
@@ -233,7 +236,6 @@ void loop() {
 void atender_servidor_wifi() {
   static uint32_t t_server = 0;
   uint32_t ahora = millis();
-
   if (ahora - t_server >= SERVER_HANDLE_MS) {
     t_server = ahora;
     server.handleClient();
@@ -256,7 +258,6 @@ void initSUMO() {
   t_atacado = 0;
   CONSIGNA_DCHA = 0;
   CONSIGNA_IZDA = 0;
-
   if (!inicializar_LASER()) {
     Serial.println("ERROR: inicializar_LASER() fallo. Revisa cableado/XSHUT/I2C.");
     while (1) {
@@ -304,17 +305,24 @@ void aplicar_configuracion_por_defecto() {
   V_BUSCA_2_IZDA   = DEF_V_BUSCA_2_IZDA;
   V_BUSCA_3_DCHA   = DEF_V_BUSCA_3_DCHA;
   V_BUSCA_3_IZDA   = DEF_V_BUSCA_3_IZDA;
-  V_ATACA_DCHA     = DEF_V_ATACA_DCHA;
-  V_ATACA_IZDA     = DEF_V_ATACA_IZDA;
-  V_RETROCEDE_DCHA = DEF_V_RETROCEDE_DCHA;
-  V_RETROCEDE_IZDA = DEF_V_RETROCEDE_IZDA;
+  
+  V_ATACA_1_DCHA   = DEF_V_ATACA_1_DCHA;
+  V_ATACA_1_IZDA   = DEF_V_ATACA_1_IZDA;
+  V_ATACA_2_DCHA   = DEF_V_ATACA_2_DCHA;
+  V_ATACA_2_IZDA   = DEF_V_ATACA_2_IZDA;
+  V_RETROCEDE_1_DCHA = DEF_V_RETROCEDE_1_DCHA;
+  V_RETROCEDE_1_IZDA = DEF_V_RETROCEDE_1_IZDA;
+  V_RETROCEDE_2_DCHA = DEF_V_RETROCEDE_2_DCHA;
+  V_RETROCEDE_2_IZDA = DEF_V_RETROCEDE_2_IZDA;
 
   T_inicio       = DEF_T_inicio;
   T_REPOSO       = DEF_T_REPOSO;
-  T_ATAQUE       = DEF_T_ATAQUE;
-  T_RETROCESO    = DEF_T_RETROCESO;
   T_fin_busqueda = DEF_T_fin_busqueda;
-  T_TRAN         = DEF_T_TRAN; // Añadido
+
+  T_ATAQUE_1     = DEF_T_ATAQUE_1;
+  T_ATAQUE_2     = DEF_T_ATAQUE_2;
+  T_RETROCESO_1  = DEF_T_RETROCESO_1;
+  T_RETROCESO_2  = DEF_T_RETROCESO_2;
 
   TICKER_LASER_MS = DEF_TICKER_LASER_MS;
   TICKER_MEF_MS   = DEF_TICKER_MEF_MS;
@@ -339,10 +347,12 @@ void cargar_configuracion() {
 
   T_inicio       = prefs.getUInt("inicio", DEF_T_inicio);
   T_REPOSO       = prefs.getUInt("reposo", DEF_T_REPOSO);
-  T_ATAQUE       = prefs.getUInt("ataque", DEF_T_ATAQUE);
-  T_RETROCESO    = prefs.getUInt("retro", DEF_T_RETROCESO);
   T_fin_busqueda = prefs.getUInt("finbus", DEF_T_fin_busqueda);
-  T_TRAN         = prefs.getUInt("ttran", DEF_T_TRAN); // Cargar de NVS
+
+  T_ATAQUE_1     = prefs.getUInt("atq1", DEF_T_ATAQUE_1);
+  T_ATAQUE_2     = prefs.getUInt("atq2", DEF_T_ATAQUE_2);
+  T_RETROCESO_1  = prefs.getUInt("ret1", DEF_T_RETROCESO_1);
+  T_RETROCESO_2  = prefs.getUInt("ret2", DEF_T_RETROCESO_2);
 
   V_INICIO_DCHA    = prefs.getShort("vi_d", DEF_V_INICIO_DCHA);
   V_INICIO_IZDA    = prefs.getShort("vi_i", DEF_V_INICIO_IZDA);
@@ -352,10 +362,15 @@ void cargar_configuracion() {
   V_BUSCA_2_IZDA   = prefs.getShort("vb2_i", DEF_V_BUSCA_2_IZDA);
   V_BUSCA_3_DCHA   = prefs.getShort("vb3_d", DEF_V_BUSCA_3_DCHA);
   V_BUSCA_3_IZDA   = prefs.getShort("vb3_i", DEF_V_BUSCA_3_IZDA);
-  V_ATACA_DCHA     = prefs.getShort("va_d", DEF_V_ATACA_DCHA);
-  V_ATACA_IZDA     = prefs.getShort("va_i", DEF_V_ATACA_IZDA);
-  V_RETROCEDE_DCHA = prefs.getShort("vr_d", DEF_V_RETROCEDE_DCHA);
-  V_RETROCEDE_IZDA = prefs.getShort("vr_i", DEF_V_RETROCEDE_IZDA);
+  
+  V_ATACA_1_DCHA   = prefs.getShort("va1_d", DEF_V_ATACA_1_DCHA);
+  V_ATACA_1_IZDA   = prefs.getShort("va1_i", DEF_V_ATACA_1_IZDA);
+  V_ATACA_2_DCHA   = prefs.getShort("va2_d", DEF_V_ATACA_2_DCHA);
+  V_ATACA_2_IZDA   = prefs.getShort("va2_i", DEF_V_ATACA_2_IZDA);
+  V_RETROCEDE_1_DCHA = prefs.getShort("vr1_d", DEF_V_RETROCEDE_1_DCHA);
+  V_RETROCEDE_1_IZDA = prefs.getShort("vr1_i", DEF_V_RETROCEDE_1_IZDA);
+  V_RETROCEDE_2_DCHA = prefs.getShort("vr2_d", DEF_V_RETROCEDE_2_DCHA);
+  V_RETROCEDE_2_IZDA = prefs.getShort("vr2_i", DEF_V_RETROCEDE_2_IZDA);
 
   float kp   = prefs.getFloat("kp", DEF_KP);
   float ki   = prefs.getFloat("ki", DEF_KI);
@@ -368,10 +383,12 @@ void cargar_configuracion() {
 
   T_inicio       = constrain(T_inicio, 0UL, 20000UL);
   T_REPOSO       = constrain(T_REPOSO, 0UL, 20000UL);
-  T_ATAQUE       = constrain(T_ATAQUE, 0UL, 20000UL);
-  T_RETROCESO    = constrain(T_RETROCESO, 0UL, 20000UL);
   T_fin_busqueda = constrain(T_fin_busqueda, 0UL, 60000UL);
-  T_TRAN         = constrain(T_TRAN, 0UL, 20000UL); // Acotar
+  
+  T_ATAQUE_1     = constrain(T_ATAQUE_1, 0UL, 20000UL);
+  T_ATAQUE_2     = constrain(T_ATAQUE_2, 0UL, 20000UL);
+  T_RETROCESO_1  = constrain(T_RETROCESO_1, 0UL, 20000UL);
+  T_RETROCESO_2  = constrain(T_RETROCESO_2, 0UL, 20000UL);
 
   V_INICIO_DCHA    = constrain(V_INICIO_DCHA, -100, 100);
   V_INICIO_IZDA    = constrain(V_INICIO_IZDA, -100, 100);
@@ -381,10 +398,15 @@ void cargar_configuracion() {
   V_BUSCA_2_IZDA   = constrain(V_BUSCA_2_IZDA, -100, 100);
   V_BUSCA_3_DCHA   = constrain(V_BUSCA_3_DCHA, -100, 100);
   V_BUSCA_3_IZDA   = constrain(V_BUSCA_3_IZDA, -100, 100);
-  V_ATACA_DCHA     = constrain(V_ATACA_DCHA, -100, 100);
-  V_ATACA_IZDA     = constrain(V_ATACA_IZDA, -100, 100);
-  V_RETROCEDE_DCHA = constrain(V_RETROCEDE_DCHA, -100, 100);
-  V_RETROCEDE_IZDA = constrain(V_RETROCEDE_IZDA, -100, 100);
+  
+  V_ATACA_1_DCHA   = constrain(V_ATACA_1_DCHA, -100, 100);
+  V_ATACA_1_IZDA   = constrain(V_ATACA_1_IZDA, -100, 100);
+  V_ATACA_2_DCHA   = constrain(V_ATACA_2_DCHA, -100, 100);
+  V_ATACA_2_IZDA   = constrain(V_ATACA_2_IZDA, -100, 100);
+  V_RETROCEDE_1_DCHA = constrain(V_RETROCEDE_1_DCHA, -100, 100);
+  V_RETROCEDE_1_IZDA = constrain(V_RETROCEDE_1_IZDA, -100, 100);
+  V_RETROCEDE_2_DCHA = constrain(V_RETROCEDE_2_DCHA, -100, 100);
+  V_RETROCEDE_2_IZDA = constrain(V_RETROCEDE_2_IZDA, -100, 100);
 
   kp   = constrain(kp, 0.0f, 5.0f);
   ki   = constrain(ki, 0.0f, 100.0f);
@@ -404,10 +426,12 @@ void guardar_configuracion() {
 
   prefs.putUInt("inicio", T_inicio);
   prefs.putUInt("reposo", T_REPOSO);
-  prefs.putUInt("ataque", T_ATAQUE);
-  prefs.putUInt("retro", T_RETROCESO);
   prefs.putUInt("finbus", T_fin_busqueda);
-  prefs.putUInt("ttran", T_TRAN); // Guardar en NVS
+
+  prefs.putUInt("atq1", T_ATAQUE_1);
+  prefs.putUInt("atq2", T_ATAQUE_2);
+  prefs.putUInt("ret1", T_RETROCESO_1);
+  prefs.putUInt("ret2", T_RETROCESO_2);
 
   prefs.putShort("vi_d", V_INICIO_DCHA);
   prefs.putShort("vi_i", V_INICIO_IZDA);
@@ -417,10 +441,15 @@ void guardar_configuracion() {
   prefs.putShort("vb2_i", V_BUSCA_2_IZDA);
   prefs.putShort("vb3_d", V_BUSCA_3_DCHA);
   prefs.putShort("vb3_i", V_BUSCA_3_IZDA);
-  prefs.putShort("va_d", V_ATACA_DCHA);
-  prefs.putShort("va_i", V_ATACA_IZDA);
-  prefs.putShort("vr_d", V_RETROCEDE_DCHA);
-  prefs.putShort("vr_i", V_RETROCEDE_IZDA);
+  
+  prefs.putShort("va1_d", V_ATACA_1_DCHA);
+  prefs.putShort("va1_i", V_ATACA_1_IZDA);
+  prefs.putShort("va2_d", V_ATACA_2_DCHA);
+  prefs.putShort("va2_i", V_ATACA_2_IZDA);
+  prefs.putShort("vr1_d", V_RETROCEDE_1_DCHA);
+  prefs.putShort("vr1_i", V_RETROCEDE_1_IZDA);
+  prefs.putShort("vr2_d", V_RETROCEDE_2_DCHA);
+  prefs.putShort("vr2_i", V_RETROCEDE_2_IZDA);
 
   prefs.putFloat("kp", getKpControl());
   prefs.putFloat("ki", getKiControl());
@@ -466,7 +495,7 @@ void atender_laser_pendiente() {
 }
 
 // ============================================================
-// MEF
+// MEF (SINFONÍA DE ESTADOS SIN TRANSIATACA)
 // ============================================================
 void aplicar_MEF() {
   if (!robot_habilitado) {
@@ -517,7 +546,7 @@ void aplicar_MEF() {
     case BUSCA_3:
       if (laser_detectado) {
         registrar_distancia_inicio_ataque();
-        estado_actual = TRANSIATACA;
+        estado_actual = ATACA_1; // Salto directo al ataque al avistar objetivo
         t0 = millis();
       }
       else if (millis() - t0 >= T_fin_busqueda) {
@@ -529,33 +558,42 @@ void aplicar_MEF() {
       CONSIGNA_IZDA = V_BUSCA_3_IZDA;
       break;
 
-    case TRANSIATACA:
-      if (millis() - t0 >= T_TRAN) { // Variable dinámica evaluada aquí
-        estado_actual = ATACA;  
+    case ATACA_1:
+      if (millis() - t0 >= T_ATAQUE_1) {
+        estado_actual = ATACA_2;
         t0 = millis();
       }
-      CONSIGNA_DCHA = V_BUSCA_3_DCHA;
-      CONSIGNA_IZDA = V_BUSCA_3_IZDA;
-      break;
-      
-    case ATACA:
-      if (millis() - t0 >= T_ATAQUE) {
-        estado_actual = RETROCEDE;
-        t0 = millis();
-      }
-      CONSIGNA_DCHA = V_ATACA_DCHA;
-      CONSIGNA_IZDA = V_ATACA_IZDA;
+      CONSIGNA_DCHA = V_ATACA_1_DCHA;
+      CONSIGNA_IZDA = V_ATACA_1_IZDA;
       break;
 
-    case RETROCEDE:
-      if (millis() - t0 >= T_RETROCESO) {
+    case ATACA_2:
+      if (millis() - t0 >= T_ATAQUE_2) {
+        estado_actual = RETROCEDE_1;
+        t0 = millis();
+      }
+      CONSIGNA_DCHA = V_ATACA_2_DCHA;
+      CONSIGNA_IZDA = V_ATACA_2_IZDA;
+      break;
+
+    case RETROCEDE_1:
+      if (millis() - t0 >= T_RETROCESO_1) {
+        estado_actual = RETROCEDE_2;
+        t0 = millis();
+      }
+      CONSIGNA_DCHA = V_RETROCEDE_1_DCHA;
+      CONSIGNA_IZDA = V_RETROCEDE_1_IZDA;
+      break;
+
+    case RETROCEDE_2:
+      if (millis() - t0 >= T_RETROCESO_2) {
         limpiar_distancia_inicio_ataque();
         estado_actual = BUSCA_1;
         t_atacado = 0;
         t0 = millis();
       }
-      CONSIGNA_DCHA = V_RETROCEDE_DCHA;
-      CONSIGNA_IZDA = V_RETROCEDE_IZDA;
+      CONSIGNA_DCHA = V_RETROCEDE_2_DCHA;
+      CONSIGNA_IZDA = V_RETROCEDE_2_IZDA;
       break;
 
     default:
@@ -628,11 +666,11 @@ void resetear_MEF() {
 }
 
 // ============================================================
-// SERVIDOR WEB (PÁGINA HTML MODIFICADA)
+// SERVIDOR WEB
 // ============================================================
 String paginaHTML() {
   String html;
-  html.reserve(11500);
+  html.reserve(14000);
 
   html += F("<!doctype html><html><head><meta charset='utf-8'>");
   html += F("<meta name='viewport' content='width=device-width,initial-scale=1'>");
@@ -642,7 +680,7 @@ String paginaHTML() {
   html += F("input{width:90px}button{margin:4px;padding:8px}");
   html += F(".ok{color:green}.bad{color:red}");
   html += F(".box{border:1px solid #ccc;padding:12px;margin:10px 0;border-radius:8px}");
-  html += F("label{display:inline-block;min-width:235px;margin:5px 0}");
+  html += F("label{display:inline-block;min-width:250px;margin:5px 0}");
   html += F(".fila{display:block;margin:3px 0}");
   html += F("</style></head><body>");
   html += F("<h2>Configuracion robot SUMO</h2>");
@@ -672,16 +710,18 @@ String paginaHTML() {
   html += F("<label>Ki</label><input id='ki' type='number' step='0.1' min='0' max='100'><br>");
   html += F("<label>Vmax salida PI</label><input id='vmax' type='number' step='0.1' min='1' max='20'><br>");
   html += F("<p><small>Al aplicar cambios de Kp/Ki/Vmax se resetea la integral del PI para evitar arrastre de saturacion.</small></p>");
-
+  
   html += F("<h4>Laser</h4>");
   html += F("<label>Umbral deteccion laser [mm]</label><input id='umbral' type='number' min='20' max='4000'><br>");
 
   html += F("<h4>Tiempos MEF [ms]</h4>");
   html += F("<label>T_inicio</label><input id='inicio' type='number' min='0' max='20000'><br>");
   html += F("<label>T_REPOSO solo tras inicio/reset</label><input id='reposo' type='number' min='0' max='20000'><br>");
-  html += F("<label>T_TRAN (Transicion Ataque)</label><input id='t_tran' type='number' min='0' max='20000'><br>"); // Añadido Input HTML
-  html += F("<label>T_ATAQUE</label><input id='ataque' type='number' min='0' max='20000'><br>");
-  html += F("<label>T_RETROCESO</label><input id='retroceso' type='number' min='0' max='20000'><br>");
+  
+  html += F("<label>T_ATAQUE_1</label><input id='atq1' type='number' min='0' max='20000'><br>");
+  html += F("<label>T_ATAQUE_2</label><input id='atq2' type='number' min='0' max='20000'><br>");
+  html += F("<label>T_RETROCESO_1</label><input id='ret1' type='number' min='0' max='20000'><br>");
+  html += F("<label>T_RETROCESO_2</label><input id='ret2' type='number' min='0' max='20000'><br>");
   html += F("<label>T_FIN_BUSQUEDA</label><input id='fin_busqueda' type='number' min='0' max='60000'><br>");
 
   html += F("<h4>Velocidades [-100 a 100]</h4>");
@@ -689,9 +729,12 @@ String paginaHTML() {
   html += F("<div class='fila'><label>BUSCA_1 DCHA / IZDA</label><input id='v_b1_d' type='number' min='-100' max='100'> <input id='v_b1_i' type='number' min='-100' max='100'></div>");
   html += F("<div class='fila'><label>BUSCA_2 DCHA / IZDA</label><input id='v_b2_d' type='number' min='-100' max='100'> <input id='v_b2_i' type='number' min='-100' max='100'></div>");
   html += F("<div class='fila'><label>BUSCA_3 DCHA / IZDA</label><input id='v_b3_d' type='number' min='-100' max='100'> <input id='v_b3_i' type='number' min='-100' max='100'></div>");
-  html += F("<div class='fila'><label>ATACA DCHA / IZDA</label><input id='v_ataca_d' type='number' min='-100' max='100'> <input id='v_ataca_i' type='number' min='-100' max='100'></div>");
-  html += F("<div class='fila'><label>RETROCEDE DCHA / IZDA</label><input id='v_retro_d' type='number' min='-100' max='100'> <input id='v_retro_i' type='number' min='-100' max='100'></div>");
-
+  
+  html += F("<div class='fila'><label>ATACA_1 DCHA / IZDA</label><input id='v_a1_d' type='number' min='-100' max='100'> <input id='v_a1_i' type='number' min='-100' max='100'></div>");
+  html += F("<div class='fila'><label>ATACA_2 DCHA / IZDA</label><input id='v_a2_d' type='number' min='-100' max='100'> <input id='v_a2_i' type='number' min='-100' max='100'></div>");
+  html += F("<div class='fila'><label>RETROCEDE_1 DCHA / IZDA</label><input id='v_r1_d' type='number' min='-100' max='100'> <input id='v_r1_i' type='number' min='-100' max='100'></div>");
+  html += F("<div class='fila'><label>RETROCEDE_2 DCHA / IZDA</label><input id='v_r2_d' type='number' min='-100' max='100'> <input id='v_r2_i' type='number' min='-100' max='100'></div>");
+  
   html += F("<br><button onclick='aplicar()'>Aplicar cambios</button>");
   html += F("<button onclick='guardarMemoria()'>Guardar en memoria</button>");
   html += F("<button onclick='restaurarDefecto()'>Restaurar defecto</button>");
@@ -700,8 +743,9 @@ String paginaHTML() {
 
   html += F("<script>");
   html += F("let primera=true;");
-  // Añadido 't_tran' a la matriz de mapeo JS
-  html += F("const campos=['tl','tf','kp','ki','vmax','umbral','inicio','reposo','t_tran','ataque','retroceso','fin_busqueda','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_ataca_d','v_ataca_i','v_retro_d','v_retro_i'];");
+  
+  html += F("const campos=['tl','tf','kp','ki','vmax','umbral','inicio','reposo','atq1','atq2','ret1','ret2','fin_busqueda','v_inicio_d','v_inicio_i','v_b1_d','v_b1_i','v_b2_d','v_b2_i','v_b3_d','v_b3_i','v_a1_d','v_a1_i','v_a2_d','v_a2_i','v_r1_d','v_r1_i','v_r2_d','v_r2_i'];");
+  
   html += F("function txt(b){return b?'SI':'NO'}");
   html += F("function cls(id,b){let e=document.getElementById(id);e.className=b?'ok':'bad'}");
   html += F("async function estado(){let r=await fetch('/api/status');let s=await r.json();");
@@ -727,7 +771,6 @@ String paginaHTML() {
   html += String(WEB_STATUS_REFRESH_MS);
   html += F(");estado();");
   html += F("</script></body></html>");
-
   return html;
 }
 
@@ -743,7 +786,6 @@ void handleStatus() {
 void handleConfig() {
   TICKER_LASER_MS = leerArgU32("tl", TICKER_LASER_MS, 50, 1000);
   TICKER_MEF_MS   = leerArgU32("tf", TICKER_MEF_MS, 10, 1000);
-
   float kp_actual = getKpControl();
   float ki_actual = getKiControl();
   float vmax_actual = getVmaxControl();
@@ -751,17 +793,17 @@ void handleConfig() {
   float kp = leerArgFloat("kp", kp_actual, 0.0f, 5.0f);
   float ki = leerArgFloat("ki", ki_actual, 0.0f, 100.0f);
   float vmax = leerArgFloat("vmax", vmax_actual, 1.0f, 20.0f);
-
   bool cambio_control = (kp != kp_actual) || (ki != ki_actual) || (vmax != vmax_actual);
   setConstantesControl(kp, ki, vmax, cambio_control);
-
   dist_activacion = leerArgI16("umbral", dist_activacion, 20, 4000);
 
   T_inicio    = leerArgU32("inicio", T_inicio, 0, 20000);
   T_REPOSO    = leerArgU32("reposo", T_REPOSO, 0, 20000);
-  T_TRAN      = leerArgU32("t_tran", T_TRAN, 0, 20000); // Añadido Procesamiento del argumento HTTP
-  T_ATAQUE    = leerArgU32("ataque", T_ATAQUE, 0, 20000);
-  T_RETROCESO    = leerArgU32("retroceso", T_RETROCESO, 0, 20000);
+  
+  T_ATAQUE_1     = leerArgU32("atq1", T_ATAQUE_1, 0, 20000);
+  T_ATAQUE_2     = leerArgU32("atq2", T_ATAQUE_2, 0, 20000);
+  T_RETROCESO_1  = leerArgU32("ret1", T_RETROCESO_1, 0, 20000);
+  T_RETROCESO_2  = leerArgU32("ret2", T_RETROCESO_2, 0, 20000);
   T_fin_busqueda = leerArgU32("fin_busqueda", T_fin_busqueda, 0, 60000);
 
   V_INICIO_DCHA    = leerArgI16("v_inicio_d", V_INICIO_DCHA, -100, 100);
@@ -772,10 +814,15 @@ void handleConfig() {
   V_BUSCA_2_IZDA   = leerArgI16("v_b2_i", V_BUSCA_2_IZDA, -100, 100);
   V_BUSCA_3_DCHA   = leerArgI16("v_b3_d", V_BUSCA_3_DCHA, -100, 100);
   V_BUSCA_3_IZDA   = leerArgI16("v_b3_i", V_BUSCA_3_IZDA, -100, 100);
-  V_ATACA_DCHA     = leerArgI16("v_ataca_d", V_ATACA_DCHA, -100, 100);
-  V_ATACA_IZDA     = leerArgI16("v_ataca_i", V_ATACA_IZDA, -100, 100);
-  V_RETROCEDE_DCHA = leerArgI16("v_retro_d", V_RETROCEDE_DCHA, -100, 100);
-  V_RETROCEDE_IZDA = leerArgI16("v_retro_i", V_RETROCEDE_IZDA, -100, 100);
+  
+  V_ATACA_1_DCHA   = leerArgI16("v_a1_d", V_ATACA_1_DCHA, -100, 100);
+  V_ATACA_1_IZDA   = leerArgI16("v_a1_i", V_ATACA_1_IZDA, -100, 100);
+  V_ATACA_2_DCHA   = leerArgI16("v_a2_d", V_ATACA_2_DCHA, -100, 100);
+  V_ATACA_2_IZDA   = leerArgI16("v_a2_i", V_ATACA_2_IZDA, -100, 100);
+  V_RETROCEDE_1_DCHA = leerArgI16("v_r1_d", V_RETROCEDE_1_DCHA, -100, 100);
+  V_RETROCEDE_1_IZDA = leerArgI16("v_r1_i", V_RETROCEDE_1_IZDA, -100, 100);
+  V_RETROCEDE_2_DCHA = leerArgI16("v_r2_d", V_RETROCEDE_2_DCHA, -100, 100);
+  V_RETROCEDE_2_IZDA = leerArgI16("v_r2_i", V_RETROCEDE_2_IZDA, -100, 100);
 
   reprogramar_ticker_laser();
   reprogramar_ticker_mef();
@@ -787,7 +834,6 @@ void handleStart() {
   bool estaba_en_inicio = (estado_actual == INICIO);
   robot_habilitado = true;
   aplicar_estado_start_stop();
-
   if (estaba_en_inicio) {
     server.send(200, "text/plain", "Robot habilitado; estado INICIO conservado");
   } else {
@@ -802,7 +848,6 @@ void handleStop() {
 
   CONSIGNA_DCHA = 0;
   CONSIGNA_IZDA = 0;
-
   if (estaba_en_inicio) {
     server.send(200, "text/plain", "Robot parado; estado INICIO conservado");
   } else {
@@ -853,12 +898,9 @@ float leerArgFloat(const char* nombre, float actual, float minimo, float maximo)
   return valor;
 }
 
-// ============================================================
-// JSON STATUS
-// ============================================================
 void enviarJSONStatus() {
   String json;
-  json.reserve(1900);
+  json.reserve(2500);
 
   json += "{";
   json += "\"robot_habilitado\":";
@@ -913,18 +955,22 @@ void enviarJSONStatus() {
   json += "\"reposo\":";
   json += String(T_REPOSO);
   json += ",";
-  json += "\"t_tran\":";      // Añadido al JSON de respuesta para el input del front
-  json += String(T_TRAN);
+  
+  json += "\"atq1\":";
+  json += String(T_ATAQUE_1);
   json += ",";
-  json += "\"ataque\":";
-  json += String(T_ATAQUE);
+  json += "\"atq2\":";
+  json += String(T_ATAQUE_2);
   json += ",";
-  json += "\"retroceso\":";
-  json += String(T_RETROCESO);
+  json += "\"ret1\":";
+  json += String(T_RETROCESO_1);
   json += ",";
+  json += "\"ret2\":";
+  json += String(T_RETROCESO_2);
+  json += ",";
+  
   json += "\"fin_busqueda\":";
   json += String(T_fin_busqueda);
-
   json += ",";
   json += "\"v_inicio_d\":";
   json += String(V_INICIO_DCHA);
@@ -950,39 +996,47 @@ void enviarJSONStatus() {
   json += "\"v_b3_i\":";
   json += String(V_BUSCA_3_IZDA);
   json += ",";
-  json += "\"v_ataca_d\":";
-  json += String(V_ATACA_DCHA);
+  
+  json += "\"v_a1_d\":";
+  json += String(V_ATACA_1_DCHA);
   json += ",";
-  json += "\"v_ataca_i\":";
-  json += String(V_ATACA_IZDA);
+  json += "\"v_a1_i\":";
+  json += String(V_ATACA_1_IZDA);
   json += ",";
-  json += "\"v_retro_d\":";
-  json += String(V_RETROCEDE_DCHA);
+  json += "\"v_a2_d\":";
+  json += String(V_ATACA_2_DCHA);
   json += ",";
-  json += "\"v_retro_i\":";
-  json += String(V_RETROCEDE_IZDA);
+  json += "\"v_a2_i\":";
+  json += String(V_ATACA_2_IZDA);
+  json += ",";
+  json += "\"v_r1_d\":";
+  json += String(V_RETROCEDE_1_DCHA);
+  json += ",";
+  json += "\"v_r1_i\":";
+  json += String(V_RETROCEDE_1_IZDA);
+  json += ",";
+  json += "\"v_r2_d\":";
+  json += String(V_RETROCEDE_2_DCHA);
+  json += ",";
+  json += "\"v_r2_i\":";
+  json += String(V_RETROCEDE_2_IZDA);
   json += "}";
 
   server.sendHeader("Cache-Control", "no-store");
   server.send(200, "application/json", json);
 }
 
-// ============================================================
-// TEXTO ESTADOS
-// ============================================================
 const char* estadoToTexto(Estado_t estado) {
   switch (estado) {
-    case INICIO:    return "INICIO";
-    case REPOSO:    return "REPOSO";
-    case BUSCA_1:   return "BUSCA_1";
-    case BUSCA_2:   return "BUSCA_2";
-    case BUSCA_3:   return "BUSCA_3";
-    case TRANSIATACA: return "TRANSIATACA"; // Corregido: no devolvía texto de este estado
-    case ATACA:     return "ATACA";
-    case RETROCEDE: return "RETROCEDE";
-    case E6:        return "E6";
-    case E7:        return "E7";
-    case E8:        return "E8";
-    default:        return "DESCONOCIDO";
+    case INICIO:      return "INICIO";
+    case REPOSO:      return "REPOSO";
+    case BUSCA_1:     return "BUSCA_1";
+    case BUSCA_2:     return "BUSCA_2";
+    case BUSCA_3:     return "BUSCA_3";
+    case ATACA_1:     return "ATACA_1";
+    case ATACA_2:     return "ATACA_2";
+    case RETROCEDE_1: return "RETROCEDE_1";
+    case RETROCEDE_2: return "RETROCEDE_2";
+    default:          return "DESCONOCIDO";
   }
 }
