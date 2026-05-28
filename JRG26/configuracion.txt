@@ -1,0 +1,27 @@
+ticker_laser: 50
+ticker_mef: 50
+
+Kp: 0.25
+Ki: 10
+Vmax salida PI: 11
+
+UMBRAL_LASER: 600
+
+T_INICIO: 800
+T_REPOSO: 800
+T_ATAQUE_1: 400
+T_ATAQUE_2: 350
+T_RETROCESO_1: 400
+T_RETROCESO_2: 350
+T_FIN_BUSQ: 4000
+
+INICIO [-20 , -20]
+BUSCA_1 [25 , -25]
+BUSCA_2 [25 , -25]
+BUSCA_3 [-15 , 15]
+ATACA_1 [50 , 50]
+ATACA_2 [20 , 20]
+RETROCEDE_1 [-50 , -50]
+RETROCEDE_2 [-20 , -20]
+
+http://192.168.4.1
