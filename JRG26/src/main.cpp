@@ -2,7 +2,7 @@
 #include <esp_now.h>
 #include <WiFi.h>
 
-uint8_t broadcastAddress[] = {0xF4, 0x65, 0x0B, 0xE7, 0xEB, 0xD0};
+uint8_t broadcastAddress[] = {0xEC, 0xE3, 0x34, 0x99, 0xEA, 0x7C};
 
 // Estructura para enviar el estado de ambos botones
 typedef struct struct_message {
