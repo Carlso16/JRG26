@@ -138,24 +138,26 @@ void reposo() {
   ruedasDcha(0);
 }
 
+//no se usa
 void buscar_d() {
-  ruedasIzda( 50);
-  ruedasDcha(-50);
+  ruedasIzda( 55);
+  ruedasDcha(-55);
 }
 
 void buscar_d_despacio() {
-  ruedasIzda( 40);
-  ruedasDcha(-40);
+  ruedasIzda( 45);
+  ruedasDcha(-45);
 }
 
 void buscar_i() {
-  ruedasIzda(-55);
-  ruedasDcha( 55);
+  ruedasIzda(-65);
+  ruedasDcha( 65);
 }
 
+// no se usa
 void buscar_i_despacio() {
-  ruedasIzda(-30);
-  ruedasDcha( 30);
+  ruedasIzda(-45);
+  ruedasDcha( 45);
 }
 
 void atacar() {
