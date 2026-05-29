@@ -10,29 +10,23 @@
 #define LASER_I2C_SCL 22
 #endif
 
-#ifndef LASER_XSHUT_1
-#define LASER_XSHUT_1 18
+#ifndef LASER_XSHUT
+#define LASER_XSHUT 15
 #endif
 
-#ifndef LASER_XSHUT_2
-#define LASER_XSHUT_2 19
+// Si no usas IRQ, se deja en -1
+#ifndef LASER_IRQ
+#define LASER_IRQ -1
 #endif
 
-#ifndef LASER_ADDR_1
-#define LASER_ADDR_1 0x30
-#endif
-
-#ifndef LASER_ADDR_2
-#define LASER_ADDR_2 0x31
+#ifndef LASER_ADDR
+#define LASER_ADDR 0x29
 #endif
 
 // =================== FUNCIONES ===================
 
-bool inicializar_LASER(); 
-//devuelve true si se inicializan los dos sensores
+bool inicializar_LASER();
 
-int16_t leer_LASER(uint8_t direccion_i2c); 
-// Devuelve distancia en mm si OK, o -1 si:
-// - no inicializado
-// - fuera de rango / error de lectura
-// - dirección no válida
+int16_t leer_LASER(uint8_t direccion_i2c);
+
+bool comprobar_LASER(uint8_t direccion_i2c, int16_t umbral_mm);

@@ -24,9 +24,9 @@
 #define CANAL_8 5
 
 // --- Prototipos de Funciones ---
-void initPWM(float ms);
-void wRuedas(int wDD,int wTD,int wI);
-void accI(int V);
-void accDD(int V);
-void accTD(int V);
+void initPWM();
+void ruedaDelDcha(int velocidad);
+void ruedasIzda(int velocidad);
+void ruedaTrasDcha(int velocidad);
+
 #endif
