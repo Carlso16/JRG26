@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include "Laser_2.h"
+#include "Laser.h"
 #include "Servos.h"
 #include <PS4Controller.h>
 #include "esp_system.h"

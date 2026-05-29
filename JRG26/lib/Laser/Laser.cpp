@@ -1,76 +1,90 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_VL53L0X.h>
-#include "LASER.h"
+#include "Adafruit_VL53L1X.h"
+#include "Laser.h"
 
-// =================== OBJETOS ======================
-static Adafruit_VL53L0X g_lox1;
-static Adafruit_VL53L0X g_lox2;
+// =================== OBJETO ======================
 
-// ===================  VARIABLES GLOBALES ==========
+static Adafruit_VL53L1X g_vl53 = Adafruit_VL53L1X(LASER_XSHUT, LASER_IRQ);
+
+// =================== VARIABLES GLOBALES ==========
+
 static bool g_iniciado = false;
-
+static int16_t g_ultima_medida = -1;
 
 // =================== FUNCIONES ====================
-static int16_t leerMM(Adafruit_VL53L0X &lox) {
-  VL53L0X_RangingMeasurementData_t m;
-  lox.rangingTest(&m, false);
-
-  if (m.RangeStatus == 0 && m.RangeMilliMeter > 0) {
-    return (int16_t)m.RangeMilliMeter;
-  }
-  return -1;
-}
-
 
 bool inicializar_LASER() {
   g_iniciado = false;
+  g_ultima_medida = -1;
 
-  // Inicia I2C
-  Wire.begin(LASER_I2C_SDA, LASER_I2C_SCL, 400000);
+  Wire.begin(LASER_I2C_SDA, LASER_I2C_SCL);
+  Wire.setClock(400000);
   delay(20);
 
-  // Control XSHUT
-  pinMode(LASER_XSHUT_1, OUTPUT);
-  pinMode(LASER_XSHUT_2, OUTPUT);
+  pinMode(LASER_XSHUT, OUTPUT);
 
-  // Apaga ambos para evitar conflicto en 0x29
-  digitalWrite(LASER_XSHUT_1, LOW);
-  digitalWrite(LASER_XSHUT_2, LOW);
+  digitalWrite(LASER_XSHUT, LOW);
   delay(10);
 
-  // ---------- SENSOR 1 ----------
-  digitalWrite(LASER_XSHUT_1, HIGH);
-  delay(10);
+  digitalWrite(LASER_XSHUT, HIGH);
+  delay(20);
 
-  if (!g_lox1.begin(0x29, false, &Wire)) {
-    Serial.println("Fallo init VL53L0X #1 en 0x29");
+  if (!g_vl53.begin(LASER_ADDR, &Wire)) {
+    Serial.print("Fallo init VL53L1X en 0x");
+    Serial.println(LASER_ADDR, HEX);
+    Serial.print("VL status: ");
+    Serial.println(g_vl53.vl_status);
     return false;
   }
-  g_lox1.setAddress(LASER_ADDR_1);
-  delay(5);
 
-  // ---------- SENSOR 2 ----------
-  digitalWrite(LASER_XSHUT_2, HIGH);
-  delay(10);
-
-  if (!g_lox2.begin(0x29, false, &Wire)) {
-    Serial.println("Fallo init VL53L0X #2 en 0x29");
+  if (!g_vl53.startRanging()) {
+    Serial.println("No se pudo iniciar el ranging del VL53L1X");
+    Serial.print("VL status: ");
+    Serial.println(g_vl53.vl_status);
     return false;
   }
-  g_lox2.setAddress(LASER_ADDR_2);
-  delay(5);
+
+  g_vl53.setTimingBudget(50);
 
   g_iniciado = true;
-  Serial.println("VL53L0X: 2 sensores inicializados OK.");
+
+  Serial.println("VL53L1X inicializado OK");
   return true;
 }
 
 int16_t leer_LASER(uint8_t direccion_i2c) {
-  if (!g_iniciado) return -1;
+  if (!g_iniciado) {
+    return -1;
+  }
 
-  if (direccion_i2c == (uint8_t)LASER_ADDR_1) return leerMM(g_lox1);
-  if (direccion_i2c == (uint8_t)LASER_ADDR_2) return leerMM(g_lox2);
+  if (direccion_i2c != LASER_ADDR) {
+    return -1;
+  }
 
-  return -1;
+  if (!g_vl53.dataReady()) {
+    return g_ultima_medida;
+  }
+
+  int16_t distancia = g_vl53.distance();
+
+  g_vl53.clearInterrupt();
+
+  if (distancia == -1) {
+    g_ultima_medida = -1;
+    return -1;
+  }
+
+  g_ultima_medida = distancia;
+  return distancia;
+}
+
+bool comprobar_LASER(uint8_t direccion_i2c, int16_t umbral_mm) {
+  int16_t distancia = leer_LASER(direccion_i2c);
+
+  if (distancia < 0) {
+    return false;
+  }
+
+  return distancia <= umbral_mm;
 }
