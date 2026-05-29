@@ -60,9 +60,9 @@ int CONSIGNA_IZDA = 0;
 // ============================================================
 uint32_t t0 = 0;
 uint32_t t_atacado   = 0;
-uint32_t T_inicio    = 800;
+uint32_t T_inicio    = 1;
 uint32_t T_fin_busqueda = 4000;
-uint32_t T_REPOSO    = 800;
+uint32_t T_REPOSO    = 1;
 
 uint32_t T_ATAQUE_1    = 600;
 uint32_t T_ATAQUE_2    = 688;
@@ -507,8 +507,8 @@ void aplicar_MEF() {
   switch (estado_actual) {
     case INICIO:
       if (t0 == 0) t0 = millis();
-      CONSIGNA_DCHA = V_INICIO_DCHA;
-      CONSIGNA_IZDA = V_INICIO_IZDA;
+      CONSIGNA_DCHA = 0;
+      CONSIGNA_IZDA = 0;
       if (millis() - t0 >= T_inicio) {
         estado_actual = REPOSO;
         t0 = millis();
