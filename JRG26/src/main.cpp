@@ -1,192 +1,164 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include "Laser_2.h"
 #include "Servos.h"
 #include <PS4Controller.h>
 #include "esp_system.h"
-#include "esp_bt_main.h"
-#include "esp_bt_device.h"
-#include "esp_gap_bt_api.h"
-#include "esp_err.h"
-#include "ESP32Servo.h"
-
 
 //---- VAR. GLOBALES ----//
-int RSY = 0;
-int LSX = 0;
+int16_t laser = 0;
 
-int v_izquierda = 0;
-int v_derecha = 0;
+int16_t dist_activacion = 800;
+unsigned long t0;
+unsigned long Tb = 2500;
+const unsigned long T = 10;   // periodo en ms
+unsigned long t_inicio = 0;
 
+typedef enum {
+  REPOSO,
+  E1,
+  E2,
+  E3,
+  E4,
+  E5
+} Estado_t;
 
-//---- SERVO ----//
-#define PIN_SERVO 23
-
-#define CANAL_SERVO 6
-#define FRECUENCIA_SERVO 50
-#define RESOLUCION_SERVO 16
-
-#define SERVO_MIN_US 500
-#define SERVO_MAX_US 2600
-
-#define ANGULO_MIN 0
-#define ANGULO_MAX 180
-
-#define PASO_SERVO 9
-#define INTERVALO_SERVO_MS 30
-
-int anguloServo = 90;
-unsigned long tUltimoServo = 0;
+Estado_t estado_actual = REPOSO;
 
 
 //---- PROTOTIPOS DE FUNCIONES ----//
+void actualizar_sensores();
+void cambiarEstado(Estado_t nuevo_estado);
+bool comprobar_laser(int16_t dist);
+
+int16_t leer_laser();
+
 void ruedasDcha(int velocidad);
-void removePairedDevices();
-void printDeviceAddress();
 
-void initServo();
-void escribirServo(int angulo);
-void actualizarServoConMando();
+void reposo();
+void buscar_d();
+void buscar_d_despacio();
+void buscar_i();
+void buscar_i_despacio();
+void atacar();
 
+void asignar_estados();
 
 void setup() {
   Serial.begin(115200);
   delay(300);
 
+  // --- PS4 ---
   PS4.begin();
   Serial.println("PS4.begin() hecho.");
 
-  Serial.print("This device MAC is: ");
-  printDeviceAddress();
+  Serial.println("\n--- Test VL53L1X (1 sensor) ---");
+  if (!inicializar_LASER()) {
+    Serial.println("ERROR: inicializar_LASER() fallo. Revisa cableado/XSHUT.");
+    while (1) delay(1000);
+  }
 
-  removePairedDevices();
-  Serial.println("Dispositivos emparejados eliminados.");
-  
-  initPWM();      // Si tu versión usa initPWM() sin parámetro, cambia esta línea por initPWM();
-  initServo();
+  initPWM();
 }
-
 
 void loop() {
-  if (PS4.isConnected()) {
-    RSY = PS4.RStickY();
-    LSX = PS4.LStickX();
+  t_inicio = millis();
+  actualizar_sensores();
 
-    if (RSY < 10 && RSY > -10) RSY = 0;
-    if (LSX < 10 && LSX > -10) LSX = 0;
+  bool detectado = comprobar_laser(laser);
 
-    int velocidad = map(RSY, -128, 127, -100, 100);
-    int giro = map(LSX, -128, 127, -100, 100);
+  switch (estado_actual) {
+    case REPOSO:
+      reposo();
+      if (PS4.isConnected() && PS4.Cross()) cambiarEstado(E1);
+      break;
 
-    v_izquierda = velocidad + giro;
-    v_derecha   = velocidad - giro;
+    case E1:
+      buscar_i();
+      if (detectado) cambiarEstado(E2);
+      if (PS4.isConnected() && PS4.Triangle()) cambiarEstado(REPOSO);
+      break;
+    
+    case E2:
+      buscar_i();
+      if (!detectado){ cambiarEstado(E3); t0 = millis();}
+      if (PS4.isConnected() && PS4.Triangle()) cambiarEstado(REPOSO);
+      break;
 
-    if (PS4.R1()) v_izquierda = v_izquierda * 0.4;
-    if (PS4.R1()) v_derecha   = v_derecha * 0.4;
+    case E3:
+      buscar_d_despacio();
+      if (detectado && (millis() - t0 >= 500)) cambiarEstado(E4);
+      if (millis() - t0 >= Tb) cambiarEstado(E1);
+      if (PS4.isConnected() && PS4.Triangle()) cambiarEstado(REPOSO);
+      break;
 
-    v_izquierda = constrain(v_izquierda, -100, 100);
-    v_derecha   = constrain(v_derecha, -100, 100);  
+    case E4:
+      atacar();
+      if (!detectado) cambiarEstado(E1);
+      if (PS4.isConnected() && PS4.Triangle()) cambiarEstado(REPOSO);
+      break;
 
-    ruedasDcha(v_derecha);
-    ruedasIzda(v_izquierda);
-
-    actualizarServoConMando();
-
-    // Si quieres seguir viendo velocidades, descomenta esto:
-    /*
-    Serial.printf(
-      "Vel. Izda: %d, Vel. Dcha: %d\n",
-      v_izquierda,
-      v_derecha
-    );
-    */
+    default:
+      cambiarEstado(REPOSO);
+      break;
   }
 
-  delay(10);
+  while (millis() - t_inicio < T) {
+    delay(1);
+  }
 }
 
-
-void initServo() {
-  ledcSetup(CANAL_SERVO, FRECUENCIA_SERVO, RESOLUCION_SERVO);
-  ledcAttachPin(PIN_SERVO, CANAL_SERVO);
-
-  escribirServo(anguloServo);
-
-  Serial.print("Servo inicial: ");
-  Serial.print(anguloServo);
-  Serial.println(" grados");
+void cambiarEstado(Estado_t nuevo_estado) {
+  Serial.println(nuevo_estado);
+  estado_actual = nuevo_estado;
 }
 
-
-void escribirServo(int angulo) {
-  if (angulo < 45) angulo = 45;
-  if (angulo > 175) angulo = 175;
-  angulo = constrain(angulo, ANGULO_MIN, ANGULO_MAX);
-
-  int pulso_us = map(angulo, 0, 180, SERVO_MIN_US, SERVO_MAX_US);
-
-  uint32_t dutyMax = (1UL << RESOLUCION_SERVO) - 1;
-  uint32_t duty = ((uint64_t)pulso_us * dutyMax) / 20000UL;
-
-  ledcWrite(CANAL_SERVO, duty);
+void actualizar_sensores() {
+  laser = leer_laser();
 }
 
-
-void actualizarServoConMando() {
-  unsigned long ahora = millis();
-
-  if (ahora - tUltimoServo < INTERVALO_SERVO_MS) {
-    return;
-  }
-
-  int nuevoAngulo = anguloServo;
-
-  // Flecha izquierda: abrir poco a poco
-  if (PS4.Left() && !PS4.Right()) {
-    nuevoAngulo += PASO_SERVO;
-  }
-
-  // Flecha derecha: cerrar poco a poco
-  else if (PS4.Right() && !PS4.Left()) {
-    nuevoAngulo -= PASO_SERVO;
-  }
-
-  nuevoAngulo = constrain(nuevoAngulo, ANGULO_MIN, ANGULO_MAX);
-
-  if (nuevoAngulo != anguloServo) {
-    anguloServo = nuevoAngulo;
-    escribirServo(anguloServo);
-
-    Serial.print("Servo: ");
-    Serial.print(anguloServo);
-    Serial.println(" grados");
-  }
-
-  tUltimoServo = ahora;
+int16_t leer_laser() {
+  int16_t d = leer_LASER(0x29);   // 1 solo sensor, dirección por defecto
+  Serial.print("Distancia: ");
+  Serial.println(d);
+  return d;
 }
 
+bool comprobar_laser(int16_t dist) {
+  return (dist != -1) && (dist < dist_activacion);
+}
 
 void ruedasDcha(int v) {
   ruedaDelDcha(v);
   ruedaTrasDcha(v);
 }
 
-
-void removePairedDevices() {
-  uint8_t pairedDeviceBtAddr[20][6];
-  int count = esp_bt_gap_get_bond_device_num();
-  esp_bt_gap_get_bond_device_list(&count, pairedDeviceBtAddr);
-
-  for (int i = 0; i < count; i++) {
-    esp_bt_gap_remove_bond_device(pairedDeviceBtAddr[i]);
-  }
+void reposo() {
+  ruedasIzda(0);
+  ruedasDcha(0);
 }
 
+void buscar_d() {
+  ruedasIzda( 50);
+  ruedasDcha(-50);
+}
 
-void printDeviceAddress() {
-  const uint8_t* mac = esp_bt_dev_get_address();
+void buscar_d_despacio() {
+  ruedasIzda( 40);
+  ruedasDcha(-40);
+}
 
-  Serial.printf(
-    "%02X:%02X:%02X:%02X:%02X:%02X\n",
-    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
-  );
+void buscar_i() {
+  ruedasIzda(-55);
+  ruedasDcha( 55);
+}
+
+void buscar_i_despacio() {
+  ruedasIzda(-30);
+  ruedasDcha( 30);
+}
+
+void atacar() {
+  ruedasIzda( 80);
+  ruedasDcha( 80);
 }
