@@ -22,15 +22,15 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *data, int len) {
     Serial.println("");
     Serial.print("Boton1 : ");
     Serial.println(incomingData.boton1);
-    digitalWrite(GRUPO_A_PIN1, incomingData.boton1 ? HIGH : LOW);
-    digitalWrite(GRUPO_A_PIN2, incomingData.boton1 ? HIGH : LOW);
+    digitalWrite(GRUPO_A_PIN1, incomingData.boton1 ? LOW : HIGH);
+    digitalWrite(GRUPO_A_PIN2, incomingData.boton1 ? LOW : HIGH);
 
     // Control Grupo B (Mientras pin 26 esté pulsado)
     
     Serial.print("Boton2 : ");
     Serial.println(incomingData.boton2);
-    digitalWrite(GRUPO_B_PIN1, incomingData.boton2 ? HIGH : LOW);
-    digitalWrite(GRUPO_B_PIN2, incomingData.boton2 ? HIGH : LOW);
+    digitalWrite(GRUPO_B_PIN1, incomingData.boton2 ? LOW : HIGH);
+    digitalWrite(GRUPO_B_PIN2, incomingData.boton2 ? LOW : HIGH);
 }
 
 void setup() {
