@@ -1,4 +1,4 @@
-# JGR26
+# JGR26 ⚙️
 
 ## 🇬🇧 Project Description (English)
 
